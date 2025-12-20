@@ -1,0 +1,26 @@
+name = "shodh-api"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# D1 Database binding
+# Replace DATABASE_ID with your actual D1 database UUID
+[[d1_databases]]
+binding = "DB"
+database_name = "shodh-memory"
+database_id = "YOUR_D1_DATABASE_ID"
+
+# Vectorize binding
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "shodh-vectors"
+
+# Workers AI binding
+[ai]
+binding = "AI"
+
+# Environment variables (set via wrangler secret)
+# Run: npx wrangler secret put API_KEY
+
+[vars]
+# Add any non-secret variables here

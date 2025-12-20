@@ -1,0 +1,19 @@
+{
+  "name": "shodh-cloudflare-mcp",
+  "version": "1.0.0",
+  "description": "MCP bridge for SHODH on Cloudflare",
+  "type": "module",
+  "main": "index.js",
+  "bin": {
+    "shodh-cloudflare-mcp": "./index.js"
+  },
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
