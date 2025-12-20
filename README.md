@@ -2,6 +2,9 @@
 
 A globally distributed, SHODH-compatible memory system running on Cloudflare's edge network.
 
+> Inspired by [SHODH Memory](https://github.com/varun29ankuS/shodh-memory) by [@varun29ankuS](https://github.com/varun29ankuS)
+> Read our [Development Journey](JOURNEY.md) for insights and learnings.
+
 ## Architecture
 
 ```
@@ -162,6 +165,12 @@ Once configured, these tools are available in Claude:
 - `Context` - Contextual information
 - `Task` - Task-related
 - `Conversation` - Auto-ingested conversations
+
+## Acknowledgments
+
+This project is inspired by and compatible with [SHODH Memory](https://github.com/varun29ankuS/shodh-memory) by [@varun29ankuS](https://github.com/varun29ankuS). SHODH's innovative approach to AI memory - including emotional metadata, episodic structure, and Hebbian-style associations - provided the foundation for this edge implementation.
+
+See [JOURNEY.md](JOURNEY.md) for detailed insights from our development process.
 
 ## License
 
