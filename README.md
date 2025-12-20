@@ -9,13 +9,13 @@ A globally distributed, SHODH-compatible memory system running on Cloudflare's e
 
 ```
 ┌─────────────────────────────────────────────────┐
-│              Cloudflare Edge                     │
+│              Cloudflare Edge                    │
 │  ┌─────────────┐   ┌──────────┐   ┌──────────┐  │
 │  │   Worker    │──▶│    D1    │   │Vectorize │  │
 │  │  (API)      │   │(metadata)│   │(vectors) │  │
 │  └──────┬──────┘   └──────────┘   └──────────┘  │
-│         │                                        │
-│         ▼                                        │
+│         │                                       │
+│         ▼                                       │
 │  ┌─────────────┐                                │
 │  │ Workers AI  │  (bge-small-en-v1.5 embeddings)│
 │  └─────────────┘                                │
