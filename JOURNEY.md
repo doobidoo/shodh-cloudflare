@@ -1,8 +1,40 @@
 # SHODH on Cloudflare - Development Journey
 
+## How This Project Came to Be
+
+### The Serendipity Story
+
+This project was born from a happy accident! While working on [mcp-memory-service](https://github.com/doobidoo/mcp-memory-service) - my personal MCP memory system focused on quality management, document ingestion, and consolidation - I stumbled upon [@varun29ankuS](https://github.com/varun29ankuS)'s [SHODH Memory](https://github.com/varun29ankuS/shodh-memory) project.
+
+What caught my attention were SHODH's unique features that complemented my existing system:
+- **Proactive context surfacing** - automatically finds relevant memories for each message
+- **Episodic memory structure** - episode chaining with sequence numbers
+- **Emotional metadata** - valence, arousal, emotion labels
+- **Graph-based associative retrieval** - follows learned connections between memories
+
+### The Multi-Device Challenge
+
+The catalyst for this Cloudflare implementation was a practical need: **accessing the same memories across all my devices** (laptop, phone, tablet). While mcp-memory-service has a Cloudflare backend for multi-device sync, SHODH's architecture inspired a different approach - running the entire memory system on Cloudflare's edge.
+
+### Two Systems, Complementary Strengths
+
+**mcp-memory-service** excels at:
+- Quality management and rating
+- Document ingestion (PDF, TXT, MD, JSON)
+- Scheduled consolidation
+- Natural language time queries
+
+**SHODH Memory** excels at:
+- Conversational context and episodes
+- Emotional understanding
+- Proactive memory surfacing
+- Association-based retrieval
+
+This Cloudflare implementation brings SHODH's conversational strengths to the edge, making them globally available.
+
 ## Overview
 
-This project is an implementation of [SHODH Memory](https://github.com/varun29ankuS/shodh-memory) on Cloudflare's edge infrastructure, bringing globally distributed, AI-powered memory to the edge.
+An implementation of [SHODH Memory](https://github.com/varun29ankuS/shodh-memory) on Cloudflare's edge infrastructure, bringing globally distributed, AI-powered conversational memory to the edge.
 
 ## What We Built
 
@@ -140,19 +172,46 @@ Things we'd love to explore:
 - [ ] **Memory pruning** based on relevance decay
 - [ ] **Cross-memory reasoning** using graph traversal
 
+## Relationship to MCP Memory Service
+
+This project exists alongside [mcp-memory-service](https://github.com/doobidoo/mcp-memory-service), not as a replacement. They serve complementary purposes:
+
+### When to Use SHODH on Cloudflare
+- **Conversational continuity** across sessions
+- **Emotional context** matters (user sentiment, valence)
+- **Episode-based memory** (sequences of related interactions)
+- **Multi-device access** with simple setup
+- **Zero infrastructure** preference (fully managed edge)
+
+### When to Use MCP Memory Service
+- **Document-heavy workflows** (PDF ingestion, knowledge bases)
+- **Quality-driven curation** (ONNX-based quality scoring)
+- **Scheduled consolidation** (daily/weekly/monthly)
+- **Advanced analytics** (quality distribution, growth projections)
+- **Local-first privacy** (SQLite-vec with optional cloud sync)
+
+### Using Both Together
+Many users might benefit from running both:
+- **SHODH** for conversational/emotional memory
+- **MCP Memory Service** for document knowledge bases
+
+Both implement the MCP protocol and can coexist in Claude Desktop configuration.
+
 ## Acknowledgments
 
-- **SHODH Memory** by Varun Ankush - The original inspiration and architecture
+- **SHODH Memory** by [@varun29ankuS](https://github.com/varun29ankuS) - The original inspiration and architecture
+- **MCP Memory Service** by [@doobidoo](https://github.com/doobidoo) - The sibling project that led to discovering SHODH
 - **Cloudflare** - For providing an amazing edge platform
 - **Model Context Protocol** - For standardizing AI tool interfaces
 - **Claude** - For being an excellent pair programming partner
 
 ## Links
 
-- Original SHODH: https://github.com/varun29ankuS/shodh-memory
-- Cloudflare Workers: https://workers.cloudflare.com/
-- MCP Protocol: https://modelcontextprotocol.io/
-- Our Implementation: (add your repo URL)
+- **Original SHODH**: https://github.com/varun29ankuS/shodh-memory
+- **MCP Memory Service**: https://github.com/doobidoo/mcp-memory-service
+- **Cloudflare Workers**: https://workers.cloudflare.com/
+- **MCP Protocol**: https://modelcontextprotocol.io/
+- **This Implementation**: https://github.com/doobidoo/shodh-cloudflare
 
 ---
 
