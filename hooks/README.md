@@ -1,12 +1,10 @@
 # Shodh Cloudflare Hooks
 
-Claude Code hooks for automatic conversation ingestion into Shodh Cloudflare.
+Hooks for AI clients to enable automatic conversation ingestion into Shodh Cloudflare.
 
-## Available Hooks
+## Smart Ingestion Logic
 
-### `claude-code-ingest-smart.sh` (Recommended)
-
-**Intelligent filtering** - Only stores valuable conversations, not every exchange.
+The "smart" hooks (`claude-code-ingest-smart.sh` and `gemini-code-ingest-smart.ps1`) share the same intelligent filtering logic to decide which conversations are valuable enough to be stored.
 
 **What triggers storage:**
 - Decisions ("decided to use", "let's go with", "chose")
@@ -30,119 +28,103 @@ Claude Code hooks for automatic conversation ingestion into Shodh Cloudflare.
 | Important keywords | `Context` |
 | Code discussion | `Context` |
 
-**Tags:** `claude-code`, `smart-ingest`, `<project>`, `<type>`
+## Client Setup
 
----
+### 1. Claude Client Setup
 
-### `claude-code-ingest.sh` (Basic)
+Use these hooks for clients like Claude Code that use a `~/.claude/settings.json` configuration.
 
-Stores **every** conversation (not recommended for heavy use).
+**Available Hooks:**
+- `claude-code-ingest-smart.sh`: **(Recommended)** Smart ingest for Linux/macOS.
+- `claude-code-ingest-smart.ps1`: **(Recommended)** Smart ingest for Windows.
+- `claude-code-ingest.sh`: (Basic) Stores every conversation.
 
-**What it captures:**
-- Last user message + assistant response
-- Project context (working directory)
-- Auto-tags: `claude-code`, `auto-ingest`, `<project-name>`
+**Installation (Linux/macOS):**
+1.  **Copy Script:**
+    ```bash
+    mkdir -p ~/.claude/hooks
+    cp hooks/claude-code-ingest-smart.sh ~/.claude/hooks/
+    chmod +x ~/.claude/hooks/claude-code-ingest-smart.sh
+    ```
+2.  **Configure `~/.claude/settings.json`:**
+    ```json
+    {
+      "hooks": {
+        "post_response": {
+          "command": "/bin/bash",
+          "args": ["~/.claude/hooks/claude-code-ingest-smart.sh"]
+        }
+      }
+    }
+    ```
 
-## Installation
+**Installation (Windows/PowerShell):**
+1.  **Copy Script:**
+    ```powershell
+    New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.claude\hooks"
+    Copy-Item "hooks\claude-code-ingest-smart.ps1" "$env:USERPROFILE\.claude\hooks\"
+    ```
+2.  **Configure `%USERPROFILE%\.claude\settings.json`:**
+    ```json
+    {
+      "hooks": {
+        "post_response": {
+          "command": "pwsh",
+          "args": ["%USERPROFILE%\\.claude\\hooks\\claude-code-ingest-smart.ps1"]
+        }
+      }
+    }
+    ```
 
-### Linux/macOS
+### 2. Gemini Client Setup
 
-#### 1. Copy the hook script
+Use this hook for Gemini-based clients that can be configured to run a script after generating a response.
 
-```bash
-mkdir -p ~/.claude/hooks
+**Available Hook:**
+- `gemini-code-ingest-smart.ps1`: **(Recommended)** Smart ingest (PowerShell-based).
 
-# Smart hook (recommended)
-cp hooks/claude-code-ingest-smart.sh ~/.claude/hooks/
-chmod +x ~/.claude/hooks/claude-code-ingest-smart.sh
-```
+**Installation:**
+The exact installation depends on your Gemini client's configuration. The goal is to have the client execute the `gemini-code-ingest-smart.ps1` script after each response, passing the path to the conversation transcript as an argument.
 
-#### 2. Configure Claude Code settings
+1.  **Place the script** in a known location on your system.
+2.  **Configure your client** to call it.
 
-Add to `~/.claude/settings.json`:
-
+**Hypothetical Gemini Client Configuration (`settings.json`):**
 ```json
 {
   "hooks": {
-    "Stop": [{
-      "matcher": "",
-      "hooks": [{
-        "type": "command",
-        "command": "bash ~/.claude/hooks/claude-code-ingest-smart.sh"
-      }]
-    }]
+    "post_response": {
+      "command": "pwsh",
+      "args": ["C:\\path\\to\\shodh-cloudflare\\hooks\\gemini-code-ingest-smart.ps1", "{transcript_path}"]
+    }
   }
 }
 ```
+*This is an illustrative example. The `{transcript_path}` placeholder must be replaced by the variable your specific client provides.*
 
-#### 3. Set environment variables
+### 3. Environment Variables (All Clients)
 
-Add to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.):
+The hooks require the following environment variables to be set.
 
+**Linux/macOS (add to `~/.bashrc`, `~/.zshrc`):**
 ```bash
 # Required
 export SHODH_CLOUDFLARE_URL="https://your-worker.your-subdomain.workers.dev"
 export SHODH_CLOUDFLARE_API_KEY="your-api-key"
 
 # Optional
-export SHODH_MIN_LENGTH=300     # Minimum content length (default: 300)
-export SHODH_DEBUG=1            # Enable debug logging
-export SHODH_LOG_FILE=/tmp/shodh-hook.log  # Log file path
+export SHODH_MIN_LENGTH=300
+export SHODH_DEBUG=1
+export SHODH_LOG_FILE=/tmp/shodh-hook.log
 ```
 
----
-
-### Windows (PowerShell)
-
-#### 1. Copy the hook script
-
-```powershell
-# Create hooks directory
-New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.claude\hooks"
-
-# Copy smart hook
-Copy-Item "hooks\claude-code-ingest-smart.ps1" "$env:USERPROFILE\.claude\hooks\"
-```
-
-#### 2. Configure Claude Code settings
-
-Add to `%USERPROFILE%\.claude\settings.json`:
-
-```json
-{
-  "hooks": {
-    "Stop": [{
-      "matcher": "",
-      "hooks": [{
-        "type": "command",
-        "command": "powershell -ExecutionPolicy Bypass -File \"%USERPROFILE%\\.claude\\hooks\\claude-code-ingest-smart.ps1\""
-      }]
-    }]
-  }
-}
-```
-
-#### 3. Set environment variables
-
-**Option A: User environment variables (persistent)**
-
+**Windows (run in PowerShell for persistent user-level variables):**
 ```powershell
 [Environment]::SetEnvironmentVariable("SHODH_CLOUDFLARE_URL", "https://your-worker.workers.dev", "User")
 [Environment]::SetEnvironmentVariable("SHODH_CLOUDFLARE_API_KEY", "your-api-key", "User")
-
-# Optional
 [Environment]::SetEnvironmentVariable("SHODH_MIN_LENGTH", "300", "User")
-[Environment]::SetEnvironmentVariable("SHODH_DEBUG", "1", "User")
 ```
-
-**Option B: System Settings**
-1. Press `Win + R`, type `sysdm.cpl`, press Enter
-2. Go to "Advanced" → "Environment Variables"
-3. Add user variables:
-   - `SHODH_CLOUDFLARE_URL` = `https://your-worker.workers.dev`
-   - `SHODH_CLOUDFLARE_API_KEY` = `your-api-key`
-
-**Note:** Restart Claude Code after setting environment variables.
+**Note:** Restart your client application after setting environment variables.
 
 ## Requirements
 
@@ -167,44 +149,46 @@ sudo apt-get install jq
 
 ## How It Works
 
-1. Claude Code triggers the `Stop` hook after each response
-2. Hook reads the transcript file path from stdin
-3. Extracts the last user message and assistant response
-4. Formats and sends to Shodh Cloudflare `/api/remember` endpoint
-5. Memory is stored with type `Conversation` and project tags
+1.  The client application (e.g., Claude Code, Gemini CLI) is configured to trigger a `post_response` hook.
+2.  The client executes the appropriate hook script, passing context (like the transcript path) via standard input.
+3.  The script reads the last user message and assistant response from the transcript.
+4.  It applies smart filtering logic to determine if the conversation is valuable.
+5.  If valuable, it formats the data and sends it to the Shodh Cloudflare `/api/remember` endpoint.
 
 ## Filtering
 
 The hook includes built-in filtering:
-- Skips conversations shorter than 50 characters (noise)
-- Truncates content longer than 4000 characters
-- Gracefully handles missing transcripts or API errors
+- Skips conversations shorter than a configurable minimum length (default 300 chars).
+- Truncates content longer than 4000 characters.
+- Gracefully handles missing transcripts or API errors.
 
 ## Troubleshooting
 
 **Hook not running:**
-- Verify settings.json syntax is valid JSON
-- Check hook file has execute permissions (Linux/macOS)
-- Restart Claude Code after configuration changes
-- Windows: Ensure PowerShell execution policy allows scripts
+- Verify your client's settings file syntax is valid JSON.
+- Check that the hook script file has execute permissions (`chmod +x` on Linux/macOS).
+- Restart your client application after any configuration changes.
+- Ensure your client's hook mechanism is correctly pointing to the script and passing the required arguments.
 
 **Memories not appearing:**
-- Test API connectivity: `curl $SHODH_CLOUDFLARE_URL/api/stats`
-- Verify API key is correct
-- Check environment variables are set
+- Test API connectivity: `curl $env:SHODH_CLOUDFLARE_URL/api/stats` (or `curl $SHODH_CLOUDFLARE_URL/api/stats` on bash).
+- Verify the `SHODH_CLOUDFLARE_API_KEY` is correct.
+- Check that the required environment variables are set and available to the client application's process.
 
 ### Debug Mode
 
-**Linux/macOS:**
-```bash
-export SHODH_DEBUG=1
-tail -f /tmp/shodh-hook.log
-```
+Enable debug mode by setting the environment variable `SHODH_DEBUG=1`. The hook will write detailed logs to `$env:TEMP\shodh-hook.log` (Windows) or `/tmp/shodh-hook.log` (Linux/macOS).
 
 **Windows (PowerShell):**
 ```powershell
 $env:SHODH_DEBUG = "1"
-Get-Content "$env:TEMP\shodh-hook.log" -Wait
+Get-Content "$env:TEMP\shodh-gemini-hook.log" -Wait
+```
+
+**Linux/macOS (Bash):**
+```bash
+export SHODH_DEBUG=1
+tail -f /tmp/shodh-hook.log
 ```
 
 **Example log output:**
@@ -217,14 +201,18 @@ Get-Content "$env:TEMP\shodh-hook.log" -Wait
 
 ### Manual Test
 
-**Linux/macOS:**
+You can test the scripts manually by piping a mock JSON input.
+
+**Claude Hook (Bash on Linux/macOS):**
 ```bash
-echo '{"transcript_path": "/path/to/transcript.json", "cwd": "/projects/test"}' | bash ~/.claude/hooks/claude-code-ingest-smart.sh
+echo '{"transcript_path": "/path/to/transcript.json", "cwd": "/projects/test"}' | bash hooks/claude-code-ingest-smart.sh
 ```
 
-**Windows:**
+**Gemini Hook (PowerShell on Windows):**
+*Create a dummy transcript file `C:\temp\gemini_transcript.json` with the content: `[{"role": "user", "content": "#remember this is a test"}, {"role": "model", "content": "OK, I will remember."}]`*
 ```powershell
-'{"transcript_path": "C:\\path\\to\\transcript.json", "cwd": "C:\\projects\\test"}' | powershell -File "$env:USERPROFILE\.claude\hooks\claude-code-ingest-smart.ps1"
+# In the shodh-cloudflare directory
+pwsh -File hooks/gemini-code-ingest-smart.ps1 -TranscriptPath "C:\temp\gemini_transcript.json"
 ```
 
 ## Acknowledgments

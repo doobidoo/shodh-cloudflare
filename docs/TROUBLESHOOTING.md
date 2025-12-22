@@ -339,27 +339,24 @@ npm run deploy
 
 ## Client Setup Issues
 
-### Environment Variables Not Set
+### Environment Variables Not Set in MCP Bridge
 
 #### Symptom
-In Claude Desktop, MCP server shows error:
+The MCP bridge process fails to start, with an error in the client's logs like:
 ```
 Error: SHODH_CLOUDFLARE_URL not set
 ```
 
+#### Cause
+The client configuration that launches the `mcp-bridge/index.js` script is missing the `env` section or the variables within it.
+
 #### Solution
 
-**1. Check your Claude Desktop config:**
+1.  **Check your client's configuration** for the MCP server.
+2.  **Verify the config** has the `env` section with both `SHODH_CLOUDFLARE_URL` and `SHODH_CLOUDFLARE_API_KEY`.
 
-**macOS/Linux**:
-```bash
-cat ~/Library/Application\ Support/Claude/claude_desktop_config.json | jq '.mcpServers."shodh-cloudflare"'
-```
-
-**2. Verify the config has env variables:**
-```json
-{
-  "mcpServers": {
+    **Example `mcpServers` entry (for any client):**
+    ```json
     "shodh-cloudflare": {
       "command": "node",
       "args": ["/path/to/shodh-cloudflare/mcp-bridge/index.js"],
@@ -368,137 +365,80 @@ cat ~/Library/Application\ Support/Claude/claude_desktop_config.json | jq '.mcpS
         "SHODH_CLOUDFLARE_API_KEY": "your-api-key-here"
       }
     }
-  }
-}
-```
+    ```
 
-**3. Common mistakes:**
-- Missing `env` section
-- Typo in environment variable names
-- Missing trailing slash in URL (should NOT have trailing slash)
-- Wrong path to index.js
+3.  **Common mistakes to check:**
+    - Missing the entire `env` block.
+    - Typo in variable names (e.g., `SHODH_URL` instead of `SHODH_CLOUDFLARE_URL`).
+    - The URL should NOT have a trailing slash (`/`).
+    - Incorrect or relative path to `index.js`. It should be an absolute path.
 
-#### Fix
-Run the setup script again:
-```bash
-cd /path/to/shodh-cloudflare
-./scripts/setup-client.sh
-```
-
-Or edit the config file manually and restart Claude Desktop.
+4.  **Restart your client application** after correcting the configuration.
 
 ---
 
-### MCP Bridge Not Starting
+### MCP Bridge Issues (Not Starting or Disconnected)
 
 #### Symptom
-Claude Desktop shows MCP server as "disconnected" or "failed"
+- Your client shows the MCP server as "disconnected," "failed," or "not running."
+- Tools like `remember` or `recall` are not available.
 
 #### Diagnosis
 
-**1. Check Claude Desktop logs:**
+1.  **Check Client Logs:** Look in your AI client's log files for errors related to MCP servers. The location varies per client.
+    - For Claude Desktop on macOS, they are in `~/Library/Logs/Claude/mcp*.log`.
 
-**macOS**:
-```bash
-tail -f ~/Library/Logs/Claude/mcp*.log
-```
+2.  **Test the MCP bridge manually:** Run the bridge directly from your terminal to see if it reports any errors on startup.
+    ```bash
+    # Navigate to the bridge directory
+    cd /path/to/shodh-cloudflare/mcp-bridge
 
-**Linux**:
-```bash
-journalctl --user -u claude-desktop -f
-```
+    # Set the environment variables manually for the test
+    export SHODH_CLOUDFLARE_URL="https://..."
+    export SHODH_CLOUDFLARE_API_KEY="your-key"
 
-**Windows**:
-Check Event Viewer or Claude Desktop's log directory
-
-**2. Test MCP bridge manually:**
-```bash
-cd /path/to/shodh-cloudflare/mcp-bridge
-node index.js
-```
-
-Look for errors in the output.
+    # Run the server
+    node index.js
+    ```
+    If this runs without error, the problem is likely in how your client is configured to launch it.
 
 #### Common Causes & Solutions
 
-**1. Node.js not found:**
-```bash
-# Verify Node.js is in PATH:
-which node
-node --version
+1.  **Node.js Not Found:**
+    The client can't find the `node` executable. Ensure Node.js is installed correctly and that its location is in your system's `PATH`. You can also try using the full, absolute path to the `node` executable in your client's configuration file.
 
-# If not found, add to PATH or use full path in config:
-"command": "/usr/local/bin/node"
-```
+2.  **Dependencies Not Installed:**
+    The `mcp-bridge` requires packages like `@modelcontextprotocol/sdk`.
+    ```bash
+    cd /path/to/shodh-cloudflare/mcp-bridge
+    npm install
+    ```
 
-**2. Dependencies not installed:**
-```bash
-cd /path/to/shodh-cloudflare/mcp-bridge
-npm install
-```
+3.  **Invalid JSON in Client Config:**
+    A syntax error (like a missing comma or quote) in your client's JSON configuration can prevent it from loading the MCP server definition. Use a JSON validator to check your file.
 
-**3. Invalid JSON in config:**
-Validate your config file:
-```bash
-cat ~/Library/Application\ Support/Claude/claude_desktop_config.json | jq '.'
-```
-
-If `jq` shows errors, fix the JSON syntax.
-
-**4. Path with spaces not quoted:**
-If your path contains spaces, ensure it's properly quoted in the config:
-```json
-"args": ["/Users/name/My Folder/shodh-cloudflare/mcp-bridge/index.js"]
-```
+4.  **Path Contains Spaces:**
+    If the absolute path to the `mcp-bridge/index.js` script contains spaces, ensure it is correctly quoted within the configuration file.
 
 ---
 
-### Worker URL Not Reachable
+### Hook Script Not Running
 
 #### Symptom
-```
-Error: ENOTFOUND or Connection timeout
-```
+Conversations are not being saved to memory automatically, even when using `#remember`.
 
 #### Diagnosis
+1. **Enable Debug Mode:** Set the environment variable `SHODH_DEBUG=1` for your client's process.
+2. **Check Log File:** After a conversation, check the hook's log file for activity.
+    - **Windows (PowerShell):** `$env:TEMP\shodh-gemini-hook.log`
+    - **Linux/macOS (Bash):** `/tmp/shodh-hook.log`
+3. If the log file is empty or doesn't exist, the client is not executing the script.
 
-**1. Test Worker URL directly:**
-```bash
-curl https://your-worker.your-subdomain.workers.dev/
-```
-
-Expected: `{"message":"SHODH Memory API is running"}`
-
-**2. Test with API key:**
-```bash
-curl -H "Authorization: Bearer YOUR_API_KEY" \
-     https://your-worker.your-subdomain.workers.dev/api/stats
-```
-
-#### Solutions
-
-**1. Worker not deployed:**
-```bash
-cd worker
-npm run deploy
-```
-
-**2. Wrong URL:**
-Get correct URL:
-```bash
-wrangler deployments list
-```
-
-**3. Firewall blocking:**
-- Check corporate firewall rules
-- Try from different network
-- Verify `*.workers.dev` is allowed
-
-**4. DNS issues:**
-```bash
-# Test DNS resolution:
-nslookup your-worker.your-subdomain.workers.dev
-```
+#### Common Causes & Solutions
+1. **Hook Not Configured in Client:** Ensure your client is configured to run the appropriate script (`claude-code-ingest-smart.sh` or `gemini-code-ingest-smart.ps1`) after a response.
+2. **Incorrect Command/Arguments:** Verify the `command` (e.g., `pwsh`, `bash`) and `args` (the path to the script and the transcript argument) are correct in your client's config.
+3. **Permissions:** On Linux/macOS, ensure the `.sh` script is executable (`chmod +x /path/to/script.sh`).
+4. **Environment Variables:** The hook scripts also rely on `SHODH_CLOUDFLARE_URL` and `SHODH_CLOUDFLARE_API_KEY`. Make sure these are available to the hook's process.
 
 ---
 
@@ -510,34 +450,29 @@ nslookup your-worker.your-subdomain.workers.dev
 ```
 Error: Unauthorized (401)
 ```
+The Worker rejected the request from the MCP bridge or hook script because the API key was invalid.
 
 #### Cause
-API key mismatch between client and Worker
+API key mismatch between the client configuration and the Worker secret.
 
 #### Solution
 
-**1. Verify API key in client config:**
-```bash
-cat ~/Library/Application\ Support/Claude/claude_desktop_config.json | \
-  jq '.mcpServers."shodh-cloudflare".env.SHODH_CLOUDFLARE_API_KEY'
-```
+1.  **Verify the API key in your client configuration.** Check the `env` block of your `mcpServers` configuration that launches the `mcp-bridge`. For the hook scripts, check the environment variable `SHODH_CLOUDFLARE_API_KEY` available to your client's process.
 
-**2. Verify API key in Worker:**
-```bash
-cd worker
-wrangler secret list
-```
+2.  **Verify the API key in the Worker:**
+    ```bash
+    cd /path/to/shodh-cloudflare/worker
+    wrangler secret list
+    ```
 
-**3. Update Worker API key:**
-```bash
-wrangler secret put API_KEY
-# Enter the SAME key used in client config
-npm run deploy
-```
+3.  **If they don't match, update the Worker's secret:**
+    ```bash
+    wrangler secret put API_KEY
+    # Enter the SAME key used in your client configuration
+    npm run deploy
+    ```
 
-**4. Restart Claude Desktop**
-
----
+4.  **Restart your client application** to ensure it picks up any changes.
 
 ### Database Query Failed (500)
 
@@ -545,39 +480,31 @@ npm run deploy
 ```
 Error: Database query failed (500)
 ```
+The Worker encountered an error when trying to communicate with the D1 database.
 
 #### Diagnosis
 
-**1. Check Worker logs:**
-```bash
-cd worker
-npm run tail
-```
+1.  **Check Worker logs:**
+    ```bash
+    cd /path/to/shodh-cloudflare/worker
+    npm run tail
+    ```
 
-**2. Try to query D1 directly:**
-```bash
-wrangler d1 execute shodh-memory \
-  --command="SELECT COUNT(*) FROM memories;" \
-  --remote
-```
+2.  **Try to query D1 directly:**
+    ```bash
+    wrangler d1 execute shodh-memory \
+      --command="SELECT COUNT(*) FROM memories;" \
+      --remote
+    ```
 
 #### Solutions
 
-**1. Schema not initialized:**
-```bash
-wrangler d1 execute shodh-memory --file=../schema.sql --remote
-```
+1.  **Schema not initialized:** If the direct query fails, the database might be empty.
+    ```bash
+    wrangler d1 execute shodh-memory --file=../schema.sql --remote
+    ```
 
-**2. Database binding error:**
-Verify `wrangler.toml` has correct `database_id`:
-```bash
-wrangler d1 list
-# Copy the ID for shodh-memory
-# Update worker/wrangler.toml
-npm run deploy
-```
-
----
+2.  **Database binding error:** Verify `wrangler.toml` has the correct `database_id` and the binding is present. Redeploy the worker after any changes.
 
 ### Vector Embedding Failed
 
@@ -587,74 +514,23 @@ Error: Failed to generate embedding
 ```
 
 #### Cause
-Workers AI binding issue or model unavailable
+Workers AI binding issue or the embedding model is unavailable.
 
 #### Solution
 
-**1. Verify AI binding in wrangler.toml:**
-```toml
-[ai]
-binding = "AI"
-```
+1.  **Verify AI binding in `wrangler.toml`:**
+    ```toml
+    [ai]
+    binding = "AI"
+    ```
 
-**2. Test Workers AI:**
-```bash
-cd worker
-wrangler dev
-# Then test embedding endpoint
-```
+2.  **Check the Cloudflare Status Page** for any incidents related to Workers AI.
 
-**3. Check Workers AI status:**
-- Visit [Cloudflare Status Page](https://www.cloudflarestatus.com/)
-- Look for Workers AI incidents
-
-**4. Redeploy Worker:**
-```bash
-npm run deploy
-```
-
----
-
-### Memory Not Found (404)
-
-#### Symptom
-```
-Error: Memory not found (404)
-```
-
-#### Cause
-Memory doesn't exist, or ID is incorrect
-
-#### Diagnosis
-
-**1. List all memories:**
-Use Claude Desktop to run:
-```
-Can you show me all my memories using shodh-cloudflare:list_memories?
-```
-
-**2. Check memory count:**
-```
-What are my memory stats?
-```
-
-#### Solution
-
-If memories are missing unexpectedly:
-
-**1. Check D1 database:**
-```bash
-wrangler d1 execute shodh-memory \
-  --command="SELECT COUNT(*) FROM memories;" \
-  --remote
-```
-
-**2. Inspect specific memory:**
-```bash
-wrangler d1 execute shodh-memory \
-  --command="SELECT * FROM memories WHERE id = 'MEMORY_ID';" \
-  --remote
-```
+3.  **Redeploy the Worker:**
+    ```bash
+    cd /path/to/shodh-cloudflare/worker
+    npm run deploy
+    ```
 
 ---
 
@@ -689,37 +565,24 @@ wrangler d1 execute shodh-memory \
 # Expected: memories, memory_edges
 ```
 
-### How to Test Vectorize Index
+### How to Test MCP Tools
 
-```bash
-wrangler vectorize list
+In your configured AI client, try to trigger a tool call.
 
-# Should show:
-# shodh-vectors (dimensions: 384, metric: cosine)
-```
+1.  Ask the AI: `Can you store this memory using your tools: "This is a test memory"`
+2.  The AI should use the `remember` tool.
+3.  Check the console output of the `mcp-bridge` server to see the tool call being processed.
+4.  Then ask: `Can you recall memories about "test"?`
+5.  The `recall` tool should be used, and it should return your test memory.
 
-### How to Test MCP Tools in Claude
+### How to Run Automated Verification (Claude Desktop)
 
-In Claude Desktop, try:
-
-```
-Can you store this memory using shodh-cloudflare:remember?
-"This is a test memory"
-```
-
-Then retrieve it:
-```
-Can you recall memories about "test" using shodh-cloudflare:recall?
-```
-
-### How to Run Automated Verification
-
+The verification script is tailored for the Claude Desktop automated setup.
 ```bash
 cd /path/to/shodh-cloudflare
 ./scripts/verify-installation.sh
 ```
-
-This will run all checks automatically and report issues.
+This will run all checks automatically and report issues. For other clients, manual verification is required.
 
 ---
 
@@ -727,42 +590,28 @@ This will run all checks automatically and report issues.
 
 ### `MODULE_NOT_FOUND`
 
-**Cause**: npm dependencies not installed
+**Cause**: npm dependencies for the `mcp-bridge` have not been installed.
 
 **Solution**:
 ```bash
-cd mcp-bridge
+cd /path/to/shodh-cloudflare/mcp-bridge
 npm install
 ```
 
 ### `ECONNREFUSED`
 
-**Cause**: Worker URL is wrong or Worker is not deployed
+**Cause**: The Worker URL in your client configuration is wrong, or the Worker is not deployed.
 
 **Solution**:
-1. Verify Worker URL
-2. Redeploy Worker: `cd worker && npm run deploy`
+1.  Verify the `SHODH_CLOUDFLARE_URL` in your client's MCP configuration.
+2.  Redeploy the Worker: `cd worker && npm run deploy`
 
 ### `Invalid JSON`
 
-**Cause**: Malformed `claude_desktop_config.json`
+**Cause**: A syntax error exists in your client's JSON configuration file.
 
 **Solution**:
-```bash
-# Validate JSON:
-cat ~/Library/Application\ Support/Claude/claude_desktop_config.json | jq '.'
-
-# Fix syntax errors (missing commas, quotes, brackets)
-```
-
-### `CORS Error`
-
-**Cause**: Cross-Origin request blocked (shouldn't happen with MCP)
-
-**Solution**:
-- This typically indicates the client is trying to access the Worker from a browser
-- MCP should use Node.js fetch, not browser fetch
-- Ensure you're using the Worker URL in the MCP config, not trying to access it from a web browser
+- Use a JSON validator or your code editor's linter to find and fix the error (e.g., a missing comma, trailing comma, or unclosed quote).
 
 ---
 
@@ -772,60 +621,33 @@ cat ~/Library/Application\ Support/Claude/claude_desktop_config.json | jq '.'
 
 **MCP Bridge:**
 
-Edit `mcp-bridge/index.js` and add debug logging:
-```javascript
-console.error("Debug: API_URL=", process.env.SHODH_CLOUDFLARE_URL);
-console.error("Debug: API_KEY=", process.env.SHODH_CLOUDFLARE_API_KEY ? "SET" : "NOT SET");
-```
+Edit `mcp-bridge/index.js` and add `console.error` statements to trace variable values and execution flow.
 
 **Worker:**
 
-Check live logs:
+Check live logs from your deployed worker:
 ```bash
-cd worker
+cd /path/to/shodh-cloudflare/worker
 npm run tail
 ```
 
-### Inspect Claude Desktop MCP Logs
+### Inspect Client MCP Logs
 
-**macOS**:
-```bash
-tail -100 ~/Library/Logs/Claude/mcp-server-shodh-cloudflare.log
-```
-
-**Linux**:
-```bash
-tail -100 ~/.config/Claude/logs/mcp-server-shodh-cloudflare.log
-```
+The location of logs related to the MCP server process depends on the client application.
+- **For Claude Desktop on macOS:**
+  ```bash
+  tail -100 ~/Library/Logs/Claude/mcp-server-shodh-cloudflare.log
+  ```
+- For other clients, check their documentation or log directories for output from background processes.
 
 ### Test Worker Locally
 
+You can run a local instance of your worker for easier debugging.
 ```bash
-cd worker
+cd /path/to/shodh-cloudflare/worker
 npm run dev
-
-# In another terminal:
-curl http://localhost:8787/
 ```
-
-### Inspect D1 Database Contents
-
-```bash
-# Count memories:
-wrangler d1 execute shodh-memory \
-  --command="SELECT COUNT(*) FROM memories;" \
-  --remote
-
-# View recent memories:
-wrangler d1 execute shodh-memory \
-  --command="SELECT id, content, created_at FROM memories ORDER BY created_at DESC LIMIT 5;" \
-  --remote
-
-# View all tables:
-wrangler d1 execute shodh-memory \
-  --command="SELECT name FROM sqlite_master WHERE type='table';" \
-  --remote
-```
+The worker will then be available at `http://localhost:8787`. You can point your client configuration to this local URL for testing.
 
 ---
 
@@ -833,32 +655,15 @@ wrangler d1 execute shodh-memory \
 
 ### Before Reporting Issues
 
-1. Run the verification script: `./scripts/verify-installation.sh`
-2. Check Worker logs: `cd worker && npm run tail`
-3. Check Claude Desktop logs
-4. Test Worker URL directly with `curl`
-5. Verify all prerequisites: [PREREQUISITES.md](PREREQUISITES.md)
+1.  If using Claude, run the verification script: `./scripts/verify-installation.sh`
+2.  Check Worker logs: `cd worker && npm run tail`
+3.  Check your client's logs for errors related to MCP or hooks.
+4.  Test the Worker URL directly with `curl`.
+5.  Verify all prerequisites from [PREREQUISITES.md](PREREQUISITES.md).
 
 ### Report a Bug
 
-If you've tried the above and still have issues:
-
-1. Go to [GitHub Issues](https://github.com/YOUR_USER/shodh-cloudflare/issues)
-2. Click "New Issue"
-3. Include:
-   - Operating system (macOS/Linux/Windows + version)
-   - Node.js version (`node --version`)
-   - Error messages (full output)
-   - Steps to reproduce
-   - Worker logs (if applicable)
-   - Configuration (remove API keys!)
-
-### Community Resources
-
-- **GitHub Discussions**: For questions and general help
-- **FAQ**: [FAQ.md](FAQ.md) - Common questions answered
-- **Installation Guide**: [INSTALLATION.md](INSTALLATION.md) - Step-by-step setup
-- **Multi-Device Setup**: [MULTI_DEVICE.md](MULTI_DEVICE.md) - Adding more devices
+If you've tried the above and still have issues, please open a [GitHub Issue](https://github.com/YOUR_USER/shodh-cloudflare/issues) with detailed information.
 
 ---
 
@@ -889,29 +694,3 @@ wrangler whoami
 cd mcp-bridge && node index.js
 ```
 
-### Config File Paths
-
-```bash
-# macOS
-~/Library/Application Support/Claude/claude_desktop_config.json
-
-# Linux
-~/.config/Claude/claude_desktop_config.json
-
-# Windows
-%APPDATA%\Claude\claude_desktop_config.json
-```
-
-### Log Locations
-
-```bash
-# Claude Desktop logs (macOS)
-~/Library/Logs/Claude/
-
-# Worker logs (real-time)
-cd worker && npm run tail
-```
-
----
-
-If this guide didn't solve your problem, please check [FAQ.md](FAQ.md) or open a [GitHub Issue](https://github.com/YOUR_USER/shodh-cloudflare/issues).

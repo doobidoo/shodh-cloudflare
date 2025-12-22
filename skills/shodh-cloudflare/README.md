@@ -1,45 +1,65 @@
 # Shodh Cloudflare Skill
 
-Persistent memory system for AI agents running on Cloudflare's edge network. Store decisions, learnings, and context that persists across conversations with global low-latency access.
+A skill definition that teaches an AI agent how to use the Shodh Cloudflare persistent memory system. It provides the model with tool definitions and instructions for storing and retrieving memories effectively.
 
-## Installation
+## Available Skills
 
-### With Claude Code
+This repository provides two versions of the skill, tailored for different models:
 
-Add the skill directly to your Claude Code configuration:
+1.  **`SKILL.md` (for Claude models):**
+    *   Uses an XML-based format for tool definitions.
+    *   Formatted according to Anthropic's documentation for tool use.
 
-```bash
-# Copy the SKILL.md to your skills directory
-mkdir -p ~/.claude/skills/shodh-cloudflare
-cp skills/shodh-cloudflare/SKILL.md ~/.claude/skills/shodh-cloudflare/SKILL.md
-```
+2.  **`SKILL_GEMINI.md` (for Gemini models):**
+    *   Uses a Markdown and JSON-based format for tool definitions.
+    *   Formatted for use in a Gemini model's system prompt.
 
-### MCP Server Configuration
+## Client Configuration
 
-Add to your Claude Desktop/Claude Code config:
+### For Claude Clients (e.g., Claude Code)
 
-**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
-**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
-**Linux:** `~/.config/Claude/claude_desktop_config.json`
+1.  **Copy the Skill File:**
+    ```bash
+    # Ensure the target directory exists
+    mkdir -p ~/.claude/skills/shodh-cloudflare
 
-```json
-{
-  "mcpServers": {
-    "shodh-cloudflare": {
-      "command": "node",
-      "args": ["/path/to/shodh-cloudflare/mcp-bridge/index.js"],
-      "env": {
-        "SHODH_CLOUDFLARE_URL": "https://your-worker.your-subdomain.workers.dev",
-        "SHODH_CLOUDFLARE_API_KEY": "your-api-key"
+    # Copy the Claude-specific skill
+    cp skills/shodh-cloudflare/SKILL.md ~/.claude/skills/shodh-cloudflare/SKILL.md
+    ```
+
+2.  **Configure the MCP Server:**
+    Your client needs to connect to the MCP bridge to make the tools available. Add the following to your Claude Desktop/Code config file:
+
+    **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+    **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+    **Linux:** `~/.config/Claude/claude_desktop_config.json`
+
+    ```json
+    {
+      "mcpServers": {
+        "shodh-cloudflare": {
+          "command": "node",
+          "args": ["/path/to/shodh-cloudflare/mcp-bridge/index.js"],
+          "env": {
+            "SHODH_CLOUDFLARE_URL": "https://your-worker.your-subdomain.workers.dev",
+            "SHODH_CLOUDFLARE_API_KEY": "your-api-key"
+          }
+        }
       }
     }
-  }
-}
-```
+    ```
+
+### For Gemini Clients
+
+1.  **Configure the System Prompt:**
+    Your Gemini client must be configured to load the contents of `skills/shodh-cloudflare/SKILL_GEMINI.md` as its system prompt. The exact method for this depends on the client application.
+
+2.  **Configure the MCP Server:**
+    Ensure your client can connect to the MCP bridge server, similar to the Claude configuration above.
 
 ## What This Skill Teaches
 
-This skill teaches Claude how to effectively use the Shodh Cloudflare memory system:
+This skill teaches the AI how to effectively use the Shodh Cloudflare memory system:
 
 - **When to store memories** - Decisions, learnings, errors, patterns
 - **How to structure memories** - Rich content, proper types, useful tags

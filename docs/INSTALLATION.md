@@ -377,52 +377,25 @@ You now have:
 
 ## Part 2: Client Setup (Every Device)
 
-This section is for:
-- Setting up your first device after Worker deployment
-- Adding additional devices (laptop, desktop, etc.)
-- Reconnecting after reinstalling Claude Desktop
+This section is for configuring your client application to connect to your deployed SHODH Cloudflare Worker.
 
 ---
 
-### Step 1: Install Node.js (if not already installed)
+### Option A: Claude Desktop Setup
+
+Follow these steps if you are using Claude Desktop with MCP support.
+
+#### Step 1: Install Node.js (if not already installed)
+The MCP Bridge requires Node.js 18+.
 
 **Check current version**:
 ```bash
 node --version
 ```
+If you see `v18.x.x` or higher, skip to the next step. Otherwise, please install it from [nodejs.org](https://nodejs.org/).
 
-If you see `v18.x.x` or higher, skip to Step 2.
-
-**Install Node.js**:
-
-**macOS (Homebrew)**:
-```bash
-brew install node@20
-```
-
-**Linux (nvm)**:
-```bash
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
-source ~/.bashrc
-nvm install 20
-nvm use 20
-```
-
-**Windows**:
-- Download from [nodejs.org](https://nodejs.org/)
-- Install the LTS version (20.x)
-
-**Verify**:
-```bash
-node --version  # Should show v18.x.x or higher
-npm --version   # Should show 9.x.x or higher
-```
-
----
-
-### Step 2A: Automated Setup (Recommended)
-
-The easiest way to set up the client:
+#### Step 2A: Automated Setup (Recommended)
+The easiest way to set up the client is to use the provided script.
 
 ```bash
 # If you haven't cloned the repository yet:
@@ -432,254 +405,108 @@ cd shodh-cloudflare
 # Run the automated setup script:
 ./scripts/setup-client.sh
 ```
+The script will guide you through checking prerequisites, installing dependencies, and generating the correct configuration for Claude Desktop.
 
-The script will:
-1. ✅ Check prerequisites (Node.js version)
-2. ✅ Install MCP bridge dependencies
-3. ✅ Ask for your Worker URL
-4. ✅ Ask for your API Key
-5. ✅ Detect your OS and config file location
-6. ✅ Generate the configuration
-7. ✅ Show you what to add to Claude Desktop config
+**After the script completes, restart Claude Desktop** and proceed to [Part 3: Verification](#part-3-verification).
 
-**Follow the script's instructions carefully!**
+#### Step 2B: Manual Setup (Alternative)
+If the script doesn't work, follow these steps:
 
-**After the script completes**:
-1. Restart Claude Desktop
-2. Proceed to [Part 3: Verification](#part-3-verification)
-
-**Troubleshooting**:
-- **Script fails**: Try manual setup below (Step 2B)
-- **Permission denied**: `chmod +x scripts/setup-client.sh`
-
----
-
-### Step 2B: Manual Setup (Alternative)
-
-If the automated script doesn't work, follow these manual steps:
-
-#### 2B.1: Install MCP Bridge Dependencies
-
-```bash
-cd shodh-cloudflare/mcp-bridge
-npm install
-```
-
-**Verify**:
-```bash
-ls node_modules
-# Should see @modelcontextprotocol
-```
-
-#### 2B.2: Find Claude Desktop Config Location
-
-**macOS**:
-```bash
-CONFIG_PATH=~/Library/Application\ Support/Claude/claude_desktop_config.json
-```
-
-**Linux**:
-```bash
-CONFIG_PATH=~/.config/Claude/claude_desktop_config.json
-```
-
-**Windows (PowerShell)**:
-```powershell
-$CONFIG_PATH = "$env:APPDATA\Claude\claude_desktop_config.json"
-```
-
-#### 2B.3: Create or Edit Config File
-
-**If the file doesn't exist, create it**:
-
-```bash
-# macOS/Linux
-mkdir -p ~/Library/Application\ Support/Claude
-echo '{"mcpServers":{}}' > ~/Library/Application\ Support/Claude/claude_desktop_config.json
-```
-
-**Edit the config file** with your text editor:
-
-**Before (empty or existing)**:
-```json
-{
-  "mcpServers": {}
-}
-```
-
-**After (add shodh-cloudflare entry)**:
-```json
-{
-  "mcpServers": {
-    "shodh-cloudflare": {
-      "command": "node",
-      "args": [
-        "/FULL/PATH/TO/shodh-cloudflare/mcp-bridge/index.js"
-      ],
-      "env": {
-        "SHODH_CLOUDFLARE_URL": "https://your-worker.your-subdomain.workers.dev",
-        "SHODH_CLOUDFLARE_API_KEY": "your-api-key-here"
+1.  **Install MCP Bridge Dependencies:**
+    ```bash
+    cd /path/to/shodh-cloudflare/mcp-bridge
+    npm install
+    ```
+2.  **Edit Claude Desktop Config:**
+    Open your `claude_desktop_config.json` (see [Prerequisites](PREREQUISITES.md) for location) and add the `shodh-cloudflare` server to the `mcpServers` object.
+    ```json
+    {
+      "mcpServers": {
+        "shodh-cloudflare": {
+          "command": "node",
+          "args": [
+            "/FULL/PATH/TO/shodh-cloudflare/mcp-bridge/index.js"
+          ],
+          "env": {
+            "SHODH_CLOUDFLARE_URL": "https://your-worker.your-subdomain.workers.dev",
+            "SHODH_CLOUDFLARE_API_KEY": "your-api-key-here"
+          }
+        }
       }
     }
-  }
-}
-```
+    ```
+    **Important:** Replace the placeholders with your **absolute path**, **Worker URL**, and **API Key**.
 
-**IMPORTANT Replacements**:
-1. Replace `/FULL/PATH/TO/shodh-cloudflare` with the ABSOLUTE path to your shodh-cloudflare directory
-   - Find it with: `pwd` (while in shodh-cloudflare directory)
-   - Example macOS: `/Users/yourname/shodh-cloudflare`
-   - Example Linux: `/home/yourname/shodh-cloudflare`
-   - Example Windows: `C:\\Users\\yourname\\shodh-cloudflare`
-
-2. Replace `https://your-worker.your-subdomain.workers.dev` with YOUR actual Worker URL from Part 1, Step 9
-
-3. Replace `your-api-key-here` with YOUR actual API key from Part 1, Step 8
-
-**Validate JSON syntax**:
-```bash
-# macOS/Linux
-cat ~/Library/Application\ Support/Claude/claude_desktop_config.json | jq '.'
-
-# If jq shows errors, fix the JSON syntax (commas, quotes, brackets)
-```
+3.  **Restart Claude Desktop:** You must fully quit and restart the application for changes to take effect.
 
 ---
 
-### Step 3: Restart Claude Desktop
+### Option B: Gemini Client Setup (General)
 
-**macOS**:
-```bash
-# Quit Claude Desktop completely
-killall Claude
+Follow these principles if you are using a Gemini-based client. The exact steps will vary depending on your client's features.
 
-# Reopen Claude Desktop from Applications
-```
+#### Step 1: Install Node.js (if not already installed)
+The MCP Bridge, which makes tools available to your client, requires Node.js 18+. Check your version with `node --version`.
 
-**Linux**:
-```bash
-# Quit and restart Claude Desktop
-# (method depends on your desktop environment)
-```
+#### Step 2: Configure Your Client
 
-**Windows**:
-- Right-click Claude Desktop in system tray
-- Select "Quit"
-- Reopen from Start Menu
+You need to configure three main things:
 
-**Wait 10-15 seconds** for Claude Desktop to initialize MCP servers.
+1.  **System Prompt:** Configure your client to use the contents of `skills/shodh-cloudflare/SKILL_GEMINI.md` as its system prompt. This teaches the model about the available tools.
 
----
+2.  **MCP Bridge (for tools):** If your client supports MCP, configure it to connect to the bridge. This involves adding a server definition similar to the Claude example, pointing to the `mcp-bridge/index.js` script. This will allow the model to automatically call the `remember`, `recall`, etc., tools.
 
-### Step 4: Verify MCP Server Connection
+3.  **Post-Response Hook (for auto-memory):** To enable automatic, intelligent memory, configure your client to execute the `hooks/gemini-code-ingest-smart.ps1` script after each response.
+    *   **Command:** `pwsh` or `powershell`
+    *   **Arguments:** The script requires the path to the conversation transcript JSON file as an argument (e.g., `C:\path\to\hooks\gemini-code-ingest-smart.ps1 {transcript_path}`).
 
-In Claude Desktop:
-
-1. Look for MCP indicator (usually in bottom-left or settings)
-2. Check if `shodh-cloudflare` server is listed
-3. Status should be "connected" or "running"
-
-**If disconnected**:
-- Check Claude Desktop logs (see [TROUBLESHOOTING.md#mcp-bridge-not-starting](TROUBLESHOOTING.md#mcp-bridge-not-starting))
-- Verify config file syntax
-- Ensure paths are absolute, not relative
-- Restart Claude Desktop again
-
----
-
-### Client Setup Complete!
-
-Your device is now configured to use SHODH-Cloudflare!
-
-**Next**: [Part 3: Verification](#part-3-verification)
+Refer to your specific client's documentation for instructions on how to set the system prompt and configure hooks.
 
 ---
 
 ## Part 3: Verification
 
-Let's make sure everything works correctly.
+Let's make sure everything works correctly for your client.
 
-### Automated Verification (Recommended)
+### For Claude Desktop
 
+#### Automated Verification (Recommended)
+The `verify-installation.sh` script is tailored for the Claude Desktop setup.
 ```bash
 cd /path/to/shodh-cloudflare
 ./scripts/verify-installation.sh
 ```
+This will test the full stack, from your local config to the remote Worker, and run a test memory cycle. If all checks pass, you're done!
 
-This will test:
-- ✅ Node.js version
-- ✅ npm packages installed
-- ✅ Claude Desktop config exists
-- ✅ Config has shodh-cloudflare entry
-- ✅ Environment variables are set
-- ✅ Worker URL is reachable
-- ✅ API authentication works
-- ✅ Can create/recall/delete test memory
+#### Manual Verification
+In Claude Desktop, try these commands:
+1.  `Can you show me my memory stats?` (should use `shodh-cloudflare:memory_stats`)
+2.  `Please remember this: "Testing integration"` (should use `shodh-cloudflare:remember`)
+3.  `Recall memories about "testing"` (should use `shodh-cloudflare:recall`)
 
-**If all checks pass**: You're done! 🎉
+### For Gemini Clients
 
-**If any checks fail**: See the error messages for troubleshooting hints, or check [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+Verification for Gemini clients is manual and focuses on ensuring each component is working.
 
----
+#### Test 1: MCP Bridge Connection
+1.  Start the MCP Bridge server manually in your terminal if your client doesn't start it automatically:
+    ```bash
+    cd /path/to/shodh-cloudflare/mcp-bridge
+    # Set environment variables if they aren't globally available
+    $env:SHODH_CLOUDFLARE_URL="https://..."
+    $env:SHODH_CLOUDFLARE_API_KEY="your-key"
+    node index.js
+    ```
+2.  In your Gemini client, ask a question that should trigger a tool, like: `Using my tools, show me my memory stats`.
+3.  Check the terminal where `mcp-bridge` is running. You should see log output indicating a tool call was received and processed.
 
-### Manual Verification
-
-If you prefer to test manually:
-
-#### Test 1: Memory Stats
-
-In Claude Desktop, type:
-```
-Can you show me my memory stats?
-```
-
-Claude should use `shodh-cloudflare:memory_stats` and show:
-```json
-{
-  "total_memories": 0,
-  "total_tags": 0,
-  ...
-}
-```
-
-#### Test 2: Store a Memory
-
-```
-Please remember this using shodh-cloudflare:remember:
-"Testing SHODH-Cloudflare integration"
-```
-
-Claude should confirm memory was stored.
-
-#### Test 3: Recall the Memory
-
-```
-Can you recall memories about "testing" using shodh-cloudflare:recall?
-```
-
-Claude should find and display your test memory.
-
-#### Test 4: List Memories
-
-```
-Show me all my memories using shodh-cloudflare:list_memories
-```
-
-You should see your test memory in the list.
-
-#### Test 5: Delete Test Memory
-
-```
-Delete the test memory using shodh-cloudflare:forget
-```
-
-Claude should confirm deletion.
-
-**If any test fails**:
-- See [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
-- Check Worker logs: `cd worker && npm run tail`
-- Verify API key matches between config and Worker
-- Ensure Worker URL is correct
+#### Test 2: Hook Script
+1.  Enable debug mode for the hook by setting the environment variable: `$env:SHODH_DEBUG = "1"`.
+2.  In your Gemini client, have a conversation that should be remembered. Include the `#remember` tag to be sure.
+    *User: `#remember My favorite color is blue.`*
+    *Model: `Okay, I will remember that.`*
+3.  Check the hook's log file (`$env:TEMP\shodh-gemini-hook.log` on Windows). You should see log entries indicating the script ran, matched a pattern, and stored the memory.
+4.  Use your client to `recall memories about my favorite color` to confirm it was saved successfully.
 
 ---
 

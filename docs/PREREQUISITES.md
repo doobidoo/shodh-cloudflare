@@ -146,47 +146,37 @@ You'll need a text editor to view/edit JSON config files:
 
 ---
 
-## Claude Desktop Requirements
+## AI Client Requirements
 
-### Claude Desktop with MCP Support
+SHODH-Cloudflare integrates with AI clients via the Model Context Protocol (MCP) and/or custom hooks.
 
-SHODH-Cloudflare integrates with Claude Desktop via the Model Context Protocol (MCP).
+### For Claude Desktop (via MCP)
+
+If you are using Claude Desktop, it must support MCP servers.
 
 #### Minimum Version
-
-Claude Desktop must support MCP servers. This is available in:
-- Claude Desktop version 0.5.0 or higher
+- Claude Desktop version 0.5.0 or higher is recommended.
 
 #### Verify Claude Desktop
-
-Open Claude Desktop and check:
-1. Settings → Advanced → MCP Servers section exists
-2. Or look for `claude_desktop_config.json` file
+Open Claude Desktop and check for:
+1.  The `MCP Servers` section in Settings → Advanced.
+2.  The existence of a `claude_desktop_config.json` file on your system.
 
 #### Config File Locations
-
 The config file path varies by operating system:
 
-**macOS**:
-```
-~/Library/Application Support/Claude/claude_desktop_config.json
-```
+**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`  
+**Linux**: `~/.config/Claude/claude_desktop_config.json`  
+**Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
 
-**Linux**:
-```
-~/.config/Claude/claude_desktop_config.json
-```
+### For Other Clients (e.g., Gemini)
 
-**Windows**:
-```
-%APPDATA%\Claude\claude_desktop_config.json
-```
+If you are using a different client, it must support one or more of the following:
+1.  **Custom System Prompts:** The ability to provide a large, detailed system prompt that includes tool definitions (e.g., from `skills/shodh-cloudflare/SKILL_GEMINI.md`).
+2.  **Model Context Protocol (MCP):** The ability to connect to an MCP server to discover and use tools.
+3.  **Post-Response Hooks:** The ability to execute a script (`.sh` or `.ps1`) after the AI model generates a response, to enable automatic memory.
 
-#### Permissions
-
-Make sure you have:
-- Read/write access to the config file
-- Ability to restart Claude Desktop
+Ensure you have read/write access to your client's configuration files and can restart it to apply changes.
 
 ---
 
@@ -288,8 +278,8 @@ Before proceeding to installation, verify:
 - [ ] **Cloudflare account** created (free tier OK)
 - [ ] **Node.js 18+** installed (`node --version`)
 - [ ] **npm** available (`npm --version`)
-- [ ] **Claude Desktop** with MCP support installed
-- [ ] **Config file location** identified for your OS
+- [ ] **Compatible AI Client** installed (e.g., Claude, Gemini)
+- [ ] **Client config file location** identified for your OS
 - [ ] **Internet connection** stable (HTTPS access to Cloudflare)
 - [ ] **30-45 minutes** available for first-time setup
 - [ ] **Text editor** ready for config file editing
