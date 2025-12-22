@@ -82,9 +82,13 @@ The script will:
 
 For manual setup instructions, see [Installation Guide - Manual Setup](docs/INSTALLATION.md#step-2b-manual-setup-alternative).
 
-## Configuration
+## Client Configuration
 
-Add to your Claude Desktop config:
+This system can be integrated with any AI client that supports the [Model Context Protocol (MCP)](https://github.com/model-context-protocol/spec) or can have its behavior customized with hooks and system prompts.
+
+### Claude Desktop
+
+Add the following to your Claude Desktop config file:
 
 **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`  
 **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`  
@@ -101,13 +105,43 @@ Add to your Claude Desktop config:
         "SHODH_CLOUDFLARE_API_KEY": "your-api-key"
       }
     }
+  },
+  "hooks": {
+    "post_response": {
+        "command": "/bin/bash",
+        "args": ["/path/to/shodh-cloudflare/hooks/claude-code-ingest-smart.sh"]
+    }
   }
 }
 ```
 
 After editing the config:
 1. **Restart Claude Desktop** (important!)
-2. Verify MCP server connection (see below)
+2. The MCP tools will become available, and the `post_response` hook will automatically save valuable conversations to your Shodh memory.
+
+### Gemini CLI (or other clients)
+
+For Gemini or other clients, you will need to:
+1.  **Provide the System Prompt:** Configure your client to use the instructions from `skills/shodh-cloudflare/SKILL_GEMINI.md`. This file tells the Gemini model how to use the available tools.
+2.  **Implement the MCP Bridge:** If your client supports MCP, configure it to connect to the `mcp-bridge/index.js` server just like the Claude Desktop configuration above.
+3.  **Implement the Post-Response Hook:** To enable automatic memory, configure your client to execute the `hooks/gemini-code-ingest-smart.ps1` script after each response. The script requires the path to a JSON file containing the conversation transcript as an argument.
+
+**Example Gemini Client Configuration (hypothetical):**
+```json
+{
+  "system_prompt_path": "/path/to/shodh-cloudflare/skills/SKILL_GEMINI.md",
+  "mcp_servers": [
+      { "name": "shodh-cloudflare", "command": ["node", "/path/to/shodh-cloudflare/mcp-bridge/index.js"] }
+  ],
+  "hooks": {
+      "post_response": {
+          "command": "pwsh",
+          "args": ["/path/to/shodh-cloudflare/hooks/gemini-code-ingest-smart.ps1", "{transcript_path}"]
+      }
+  }
+}
+```
+*This is an illustrative example. Actual implementation depends on your specific Gemini client's configuration capabilities.*
 
 ## Verification
 

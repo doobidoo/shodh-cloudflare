@@ -5,6 +5,16 @@ All notable changes to SHODH on Cloudflare will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Gemini Client Support**: Added configuration and scripts to support Gemini-based clients alongside the existing Claude client.
+- Created `skills/shodh-cloudflare/SKILL_GEMINI.md` to provide tool-use instructions formatted for Gemini models.
+- Created `hooks/gemini-code-ingest-smart.ps1`, a PowerShell script for automated memory ingestion for Gemini clients.
+
+### Changed
+- Updated `README.md` to provide distinct configuration instructions for both Claude Desktop and generic Gemini clients.
+
 ## [1.0.0] - 2025-12-20
 
 ### Added
