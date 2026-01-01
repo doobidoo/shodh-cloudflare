@@ -248,6 +248,56 @@ app.post('/api/recall', async (c) => {
 });
 
 /**
+ * POST /api/recall/by-tags - Search memories by tags
+ */
+app.post('/api/recall/by-tags', async (c) => {
+  const body = await c.req.json<{ tags: string[]; limit?: number }>();
+
+  if (!body.tags || body.tags.length === 0) {
+    return c.json({ error: 'Tags are required' }, 400);
+  }
+
+  const limit = Math.min(body.limit || 20, 100);
+
+  // Find memories with matching tags (ANY match)
+  const tagConditions = body.tags.map(tag =>
+    `tags LIKE '%"${tag}"%'`
+  ).join(' OR ');
+
+  const memories = await c.env.DB.prepare(`
+    SELECT * FROM memories
+    WHERE ${tagConditions}
+    ORDER BY created_at DESC
+    LIMIT ?
+  `).bind(limit).all<Memory>();
+
+  if (!memories.results || memories.results.length === 0) {
+    return c.json({ memories: [], count: 0 });
+  }
+
+  // Update access counts
+  const ids = memories.results.map(m => m.id);
+  const placeholders = ids.map(() => '?').join(',');
+
+  await c.env.DB.prepare(`
+    UPDATE memories
+    SET access_count = access_count + 1,
+        last_accessed_at = datetime('now')
+    WHERE id IN (${placeholders})
+  `).bind(...ids).run();
+
+  const results = memories.results.map(m => ({
+    ...m,
+    tags: m.tags ? JSON.parse(m.tags) : []
+  }));
+
+  return c.json({
+    memories: results,
+    count: results.length
+  });
+});
+
+/**
  * GET /api/memories - List all memories
  */
 app.get('/api/memories', async (c) => {
@@ -543,6 +593,142 @@ app.post('/api/reindex', async (c) => {
     success: true,
     reindexed: reindexed,
     total: memories.results.length
+  });
+});
+
+/**
+ * POST /api/consolidate - Memory consolidation
+ */
+app.post('/api/consolidate', async (c) => {
+  const body = await c.req.json<{
+    time_horizon: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly';
+  }>();
+
+  if (!body.time_horizon) {
+    return c.json({ error: 'time_horizon is required' }, 400);
+  }
+
+  // Map time horizon to days
+  const horizonDays: Record<string, number> = {
+    daily: 1,
+    weekly: 7,
+    monthly: 30,
+    quarterly: 90,
+    yearly: 365
+  };
+
+  const days = horizonDays[body.time_horizon];
+  if (!days) {
+    return c.json({ error: 'Invalid time_horizon' }, 400);
+  }
+
+  // Get memories within the time horizon
+  const memories = await c.env.DB.prepare(`
+    SELECT id, content, tags, quality_score, access_count, created_at
+    FROM memories
+    WHERE created_at > datetime('now', '-' || ? || ' days')
+  `).bind(days).all<{
+    id: string;
+    content: string;
+    tags: string | null;
+    quality_score: number;
+    access_count: number;
+    created_at: string;
+  }>();
+
+  if (!memories.results || memories.results.length === 0) {
+    return c.json({
+      success: true,
+      processed: 0,
+      archived: 0,
+      associations_created: 0
+    });
+  }
+
+  let processed = 0;
+  let archived = 0;
+  let associationsCreated = 0;
+
+  // Identify low-quality memories for archival
+  // (quality_score < 0.3 and access_count < 2)
+  const lowQualityMemories = memories.results.filter(
+    m => m.quality_score < 0.3 && m.access_count < 2
+  );
+
+  // Archive low-quality memories by adding an 'archived' tag
+  for (const memory of lowQualityMemories) {
+    const tags = memory.tags ? JSON.parse(memory.tags) : [];
+    if (!tags.includes('archived')) {
+      tags.push('archived');
+      await c.env.DB.prepare(`
+        UPDATE memories
+        SET tags = ?, quality_score = 0.1
+        WHERE id = ?
+      `).bind(JSON.stringify(tags), memory.id).run();
+      archived++;
+    }
+  }
+
+  // Create associations between memories with shared tags
+  const tagGroups = new Map<string, string[]>();
+
+  for (const memory of memories.results) {
+    if (!memory.tags) continue;
+    const tags = JSON.parse(memory.tags);
+
+    for (const tag of tags) {
+      if (tag === 'archived') continue;
+      if (!tagGroups.has(tag)) {
+        tagGroups.set(tag, []);
+      }
+      tagGroups.get(tag)!.push(memory.id);
+    }
+  }
+
+  // Create edges for memories sharing tags (basic Hebbian association)
+  for (const [tag, memoryIds] of tagGroups) {
+    if (memoryIds.length < 2) continue;
+
+    // Create edges between memories with shared tags
+    for (let i = 0; i < memoryIds.length - 1; i++) {
+      for (let j = i + 1; j < memoryIds.length; j++) {
+        const sourceId = memoryIds[i];
+        const targetId = memoryIds[j];
+
+        // Check if edge exists
+        const existing = await c.env.DB.prepare(`
+          SELECT weight, co_activations FROM memory_edges
+          WHERE source_id = ? AND target_id = ?
+        `).bind(sourceId, targetId).first<{ weight: number; co_activations: number }>();
+
+        if (existing) {
+          // Strengthen existing edge
+          await c.env.DB.prepare(`
+            UPDATE memory_edges
+            SET weight = weight + 0.1,
+                co_activations = co_activations + 1,
+                updated_at = datetime('now')
+            WHERE source_id = ? AND target_id = ?
+          `).bind(sourceId, targetId).run();
+        } else {
+          // Create new edge
+          await c.env.DB.prepare(`
+            INSERT INTO memory_edges (source_id, target_id, weight, co_activations)
+            VALUES (?, ?, 1.0, 1)
+          `).bind(sourceId, targetId).run();
+          associationsCreated++;
+        }
+      }
+    }
+  }
+
+  processed = memories.results.length;
+
+  return c.json({
+    success: true,
+    processed,
+    archived,
+    associations_created: associationsCreated
   });
 });
 

@@ -1,0 +1,908 @@
+openapi: 3.1.0
+info:
+  title: SHODH Memory API
+  description: |
+    Unified API specification for semantic memory implementations.
+
+    This specification defines a common interface for memory systems that support:
+    - Semantic search with vector embeddings
+    - Emotional metadata (valence, arousal, emotion labels)
+    - Episodic memory structure (episode threading)
+    - Source tracking and credibility scoring
+    - Quality-based retrieval and consolidation
+
+    ## Implementations
+
+    | Project | Backend | Embeddings |
+    |---------|---------|------------|
+    | [shodh-memory](https://github.com/varun29ankuS/shodh-memory) | RocksDB | MiniLM-L6-v2 (ONNX) |
+    | [shodh-cloudflare](https://github.com/doobidoo/shodh-cloudflare) | D1 + Vectorize | Workers AI (bge-small) |
+    | [mcp-memory-service](https://github.com/doobidoo/mcp-memory-service) | SQLite-vec / Hybrid | MiniLM-L6-v2 (ONNX) |
+
+    ## Migration Notes
+
+    Different embedding models produce incompatible vector spaces. Migration between
+    implementations requires re-embedding all memories.
+  version: 1.0.0
+  contact:
+    name: SHODH Memory Community
+    url: https://github.com/varun29ankuS/shodh-memory/discussions
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+  - url: https://{worker}.workers.dev
+    description: Cloudflare Workers (edge)
+    variables:
+      worker:
+        default: shodh-memory
+        description: Worker subdomain
+
+tags:
+  - name: Memory Operations
+    description: Core CRUD operations for memories
+  - name: Search
+    description: Semantic and tag-based search
+  - name: Maintenance
+    description: Consolidation, stats, and health checks
+
+paths:
+  /api/remember:
+    post:
+      summary: Store a new memory
+      description: |
+        Creates a new memory with optional emotional metadata, episodic structure,
+        and source tracking. Content is automatically embedded for semantic search.
+
+        Duplicate memories (same content hash) are rejected with 409 Conflict.
+      operationId: remember
+      tags:
+        - Memory Operations
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RememberRequest'
+            examples:
+              basic:
+                summary: Basic memory
+                value:
+                  content: "Use JWT tokens with 24h expiry for authentication"
+                  type: Decision
+                  tags: ["auth", "security"]
+              emotional:
+                summary: Memory with emotional metadata
+                value:
+                  content: "Finally fixed the production bug after 6 hours"
+                  type: Discovery
+                  tags: ["bugfix", "production"]
+                  emotion: relief
+                  emotional_valence: 0.8
+                  emotional_arousal: 0.3
+              episodic:
+                summary: Memory in an episode
+                value:
+                  content: "Step 2: Implement user registration"
+                  type: Task
+                  episode_id: "auth-implementation-2024"
+                  sequence_number: 2
+      responses:
+        '201':
+          description: Memory created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RememberResponse'
+        '400':
+          description: Invalid request (missing content)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Duplicate memory exists
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Memory already exists"
+                  existing_id:
+                    type: string
+                    format: uuid
+
+  /api/recall:
+    post:
+      summary: Semantic search for memories
+      description: |
+        Searches memories using semantic similarity. The query is embedded
+        and compared against stored memory embeddings.
+
+        Supports multiple retrieval modes:
+        - `semantic`: Pure vector similarity
+        - `associative`: Follow Hebbian memory edges
+        - `hybrid`: Combine semantic + associative (default)
+      operationId: recall
+      tags:
+        - Search
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecallRequest'
+            examples:
+              basic:
+                summary: Simple search
+                value:
+                  query: "authentication decisions"
+                  limit: 5
+              filtered:
+                summary: Search with type filter
+                value:
+                  query: "database optimization"
+                  limit: 10
+                  memory_types: ["Decision", "Learning"]
+              quality_boosted:
+                summary: Quality-boosted search
+                value:
+                  query: "error handling patterns"
+                  limit: 10
+                  quality_boost: true
+                  quality_weight: 0.3
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecallResponse'
+
+  /api/recall/by-tags:
+    post:
+      summary: Search memories by tags
+      description: |
+        Returns memories matching ANY of the provided tags.
+        Results are ordered by recency (newest first).
+      operationId: recallByTags
+      tags:
+        - Search
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - tags
+              properties:
+                tags:
+                  type: array
+                  items:
+                    type: string
+                  minItems: 1
+                  example: ["auth", "security"]
+                limit:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                  default: 20
+      responses:
+        '200':
+          description: Matching memories
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecallResponse'
+
+  /api/context:
+    post:
+      summary: Proactive context surfacing
+      description: |
+        Given a conversation context, surfaces relevant memories without
+        explicit search. Optionally auto-ingests the context as a Conversation
+        memory for continuity tracking.
+
+        This is the recommended way to maintain conversation awareness.
+      operationId: proactiveContext
+      tags:
+        - Search
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - context
+              properties:
+                context:
+                  type: string
+                  description: Current conversation context or user message
+                  example: "I'm working on the authentication system"
+                max_results:
+                  type: integer
+                  minimum: 1
+                  maximum: 20
+                  default: 5
+                auto_ingest:
+                  type: boolean
+                  default: true
+                  description: Whether to store the context as a Conversation memory
+      responses:
+        '200':
+          description: Surfaced memories
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  surfaced_memories:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Memory'
+                  count:
+                    type: integer
+                  ingested:
+                    type: boolean
+                  ingested_id:
+                    type: string
+                    format: uuid
+                    nullable: true
+
+  /api/forget/{id}:
+    delete:
+      summary: Delete a memory
+      description: Permanently deletes a memory by its ID.
+      operationId: forget
+      tags:
+        - Memory Operations
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Memory deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  deleted:
+                    type: boolean
+                    example: true
+        '404':
+          description: Memory not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/forget/by-tags:
+    post:
+      summary: Delete memories by tags
+      description: |
+        Deletes all memories matching ANY of the provided tags.
+        Use with caution - this is a bulk delete operation.
+      operationId: forgetByTags
+      tags:
+        - Memory Operations
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - tags
+              properties:
+                tags:
+                  type: array
+                  items:
+                    type: string
+                  minItems: 1
+      responses:
+        '200':
+          description: Deletion result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  deleted_count:
+                    type: integer
+
+  /api/memories:
+    get:
+      summary: List memories
+      description: Returns memories with pagination, optionally filtered by type.
+      operationId: listMemories
+      tags:
+        - Memory Operations
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: type
+          in: query
+          description: Filter by memory type
+          schema:
+            $ref: '#/components/schemas/MemoryType'
+      responses:
+        '200':
+          description: List of memories
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  memories:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Memory'
+                  count:
+                    type: integer
+                    description: Number of memories in this response
+                  total:
+                    type: integer
+                    description: Total number of memories matching filters
+
+  /api/memories/{id}:
+    get:
+      summary: Get a specific memory
+      operationId: getMemory
+      tags:
+        - Memory Operations
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Memory details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Memory'
+        '404':
+          description: Memory not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    patch:
+      summary: Update memory metadata
+      description: |
+        Updates memory metadata without changing content or re-embedding.
+        Useful for updating tags, quality scores, or custom metadata.
+      operationId: updateMemory
+      tags:
+        - Memory Operations
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tags:
+                  type: array
+                  items:
+                    type: string
+                memory_type:
+                  $ref: '#/components/schemas/MemoryType'
+                metadata:
+                  type: object
+                  additionalProperties: true
+      responses:
+        '200':
+          description: Memory updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Memory'
+
+  /api/consolidate:
+    post:
+      summary: Trigger memory consolidation
+      description: |
+        Triggers the consolidation process for a given time horizon.
+
+        Consolidation performs:
+        - Exponential decay scoring
+        - Association discovery between memories
+        - Semantic clustering and compression
+        - Quality-based archival of low-value memories
+
+        This is an optional operation - some implementations run consolidation
+        automatically on a schedule.
+      operationId: consolidate
+      tags:
+        - Maintenance
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - time_horizon
+              properties:
+                time_horizon:
+                  type: string
+                  enum: [daily, weekly, monthly, quarterly, yearly]
+                  description: Time horizon for consolidation scope
+      responses:
+        '200':
+          description: Consolidation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  processed:
+                    type: integer
+                    description: Number of memories processed
+                  archived:
+                    type: integer
+                    description: Number of memories archived
+                  associations_created:
+                    type: integer
+                    description: New memory associations discovered
+
+  /api/stats:
+    get:
+      summary: Get memory statistics
+      description: Returns aggregate statistics about stored memories.
+      operationId: getStats
+      tags:
+        - Maintenance
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_memories:
+                    type: integer
+                  memories_last_7_days:
+                    type: integer
+                  by_type:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        memory_type:
+                          type: string
+                        count:
+                          type: integer
+                  database:
+                    type: string
+                    description: Storage backend identifier
+                  vector_store:
+                    type: string
+                    description: Vector index identifier
+
+  /api/health:
+    get:
+      summary: Health check
+      description: Returns service health status. Does not require authentication.
+      operationId: healthCheck
+      tags:
+        - Maintenance
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy, degraded, unhealthy]
+                  version:
+                    type: string
+                  uptime_seconds:
+                    type: integer
+
+  /api/tags:
+    get:
+      summary: List all tags
+      description: Returns all unique tags used across memories.
+      operationId: listTags
+      tags:
+        - Maintenance
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of tags
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tags:
+                    type: array
+                    items:
+                      type: string
+                  count:
+                    type: integer
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: API key passed as Bearer token
+
+  schemas:
+    Memory:
+      type: object
+      required:
+        - id
+        - content
+        - content_hash
+        - created_at
+      properties:
+        # Identification
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier
+        content:
+          type: string
+          description: The memory content
+        content_hash:
+          type: string
+          description: SHA-256 hash for deduplication
+
+        # Classification
+        type:
+          $ref: '#/components/schemas/MemoryType'
+        tags:
+          type: array
+          items:
+            type: string
+          default: []
+
+        # Source & Trust
+        source_type:
+          $ref: '#/components/schemas/SourceType'
+        credibility:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          default: 1.0
+          description: Trust score (0.0-1.0)
+
+        # Emotional Metadata
+        emotion:
+          type: string
+          nullable: true
+          description: Emotion label (joy, frustration, surprise, relief, etc.)
+          examples: ["joy", "frustration", "surprise", "relief", "curiosity"]
+        emotional_valence:
+          type: number
+          format: float
+          minimum: -1
+          maximum: 1
+          nullable: true
+          description: Negative to positive sentiment (-1.0 to 1.0)
+        emotional_arousal:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          nullable: true
+          description: Calm to aroused intensity (0.0 to 1.0)
+
+        # Episodic Memory
+        episode_id:
+          type: string
+          nullable: true
+          description: Groups related memories into coherent episodes
+        sequence_number:
+          type: integer
+          nullable: true
+          description: Order within an episode
+
+        # Timestamps
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_accessed_at:
+          type: string
+          format: date-time
+          nullable: true
+
+        # Quality & Access
+        quality_score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          nullable: true
+          description: AI-evaluated quality score
+        access_count:
+          type: integer
+          default: 0
+          description: Number of times retrieved
+
+        # Implementation-specific
+        embedding:
+          type: array
+          items:
+            type: number
+            format: float
+          nullable: true
+          description: Vector embedding (dimensions vary by implementation)
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Implementation-specific metadata
+
+    MemoryType:
+      type: string
+      enum:
+        - Observation
+        - Decision
+        - Learning
+        - Error
+        - Discovery
+        - Pattern
+        - Context
+        - Task
+        - CodeEdit
+        - FileAccess
+        - Search
+        - Command
+        - Conversation
+      default: Observation
+      description: |
+        Memory classification:
+        - **Observation**: General observations and notes
+        - **Decision**: Decisions made with rationale
+        - **Learning**: Things learned from experience
+        - **Error**: Error resolutions and debugging insights
+        - **Discovery**: New discoveries and insights
+        - **Pattern**: Recognized patterns in code or behavior
+        - **Context**: Contextual background information
+        - **Task**: Task-related notes and progress
+        - **CodeEdit**: Code modifications made
+        - **FileAccess**: Files read or accessed
+        - **Search**: Search queries and results
+        - **Command**: Commands executed
+        - **Conversation**: Auto-ingested conversation context
+
+    SourceType:
+      type: string
+      enum:
+        - user
+        - system
+        - api
+        - file
+        - web
+        - ai_generated
+        - inferred
+      default: user
+      description: |
+        Where the memory originated:
+        - **user**: Direct user input
+        - **system**: System-generated events
+        - **api**: External API responses
+        - **file**: Content from files
+        - **web**: Web content
+        - **ai_generated**: AI-generated content
+        - **inferred**: Inferred from context
+
+    RememberRequest:
+      type: object
+      required:
+        - content
+      properties:
+        content:
+          type: string
+          minLength: 1
+          description: The memory content to store
+        type:
+          $ref: '#/components/schemas/MemoryType'
+        tags:
+          type: array
+          items:
+            type: string
+          default: []
+        source_type:
+          $ref: '#/components/schemas/SourceType'
+        credibility:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          default: 1.0
+        emotion:
+          type: string
+          nullable: true
+        emotional_valence:
+          type: number
+          format: float
+          minimum: -1
+          maximum: 1
+          nullable: true
+        emotional_arousal:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          nullable: true
+        episode_id:
+          type: string
+          nullable: true
+        sequence_number:
+          type: integer
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Custom metadata fields
+
+    RememberResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        id:
+          type: string
+          format: uuid
+        content_hash:
+          type: string
+
+    RecallRequest:
+      type: object
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          minLength: 1
+          description: Natural language search query
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 5
+        mode:
+          type: string
+          enum: [semantic, associative, hybrid]
+          default: hybrid
+          description: Retrieval mode
+        memory_types:
+          type: array
+          items:
+            $ref: '#/components/schemas/MemoryType'
+          nullable: true
+          description: Filter by memory types
+        quality_boost:
+          type: boolean
+          default: false
+          description: Enable quality-weighted ranking
+        quality_weight:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          default: 0.3
+          description: Weight for quality score in ranking (0.3 = 30% quality, 70% semantic)
+
+    RecallResponse:
+      type: object
+      properties:
+        memories:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/Memory'
+              - type: object
+                properties:
+                  similarity_score:
+                    type: number
+                    format: float
+                    minimum: 0
+                    maximum: 1
+                    description: Semantic similarity to query
+                  relevance_score:
+                    type: number
+                    format: float
+                    minimum: 0
+                    maximum: 1
+                    description: Combined relevance score (if quality_boost enabled)
+        count:
+          type: integer
+        query:
+          type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        code:
+          type: string
+          description: Error code for programmatic handling
+        details:
+          type: object
+          additionalProperties: true
+          description: Additional error details

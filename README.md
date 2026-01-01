@@ -1,9 +1,12 @@
 # SHODH on Cloudflare
 
-A globally distributed, SHODH-compatible memory system running on Cloudflare's edge network.
+## Your AI's memory shouldn't disappear when you switch devices.
 
-> Inspired by [SHODH Memory](https://github.com/varun29ankuS/shodh-memory) by [@varun29ankuS](https://github.com/varun29ankuS)
-> Read our [Development Journey](JOURNEY.md) for insights and learnings.
+You're on your laptop working with Claude. It remembers your project structure, coding style, and decisions. Then you switch to your phone—and it's all gone. You're re-explaining the same context. **Again.**
+
+**SHODH on Cloudflare solves this.** Your AI's memory syncs globally across all your devices through Cloudflare's edge network. Same context everywhere, always available, <50ms latency worldwide.
+
+> Built with [SHODH Memory](https://github.com/varun29ankuS/shodh-memory) architecture by [@varun29ankuS](https://github.com/varun29ankuS)
 
 ## Architecture
 
@@ -28,15 +31,24 @@ A globally distributed, SHODH-compatible memory system running on Cloudflare's e
     └───────────┘
 ```
 
-## Components
+## Why Multi-Device Memory Matters
+
+| Without SHODH | With SHODH |
+|---------------|------------|
+| ❌ "What's your tech stack again?" | ✅ "I remember you're using Next.js with Prisma" |
+| ❌ Context lost when switching devices | ✅ Same context on laptop, phone, tablet |
+| ❌ Re-explain project after every restart | ✅ AI already knows your project structure |
+| ❌ Memories stuck on one machine | ✅ Global sync, <50ms anywhere |
+
+## How It Works
 
 | Component | Technology | Purpose |
 |-----------|------------|---------|
-| **API** | Cloudflare Workers | REST API endpoint |
-| **Metadata** | D1 (SQLite) | Memory content, tags, timestamps |
-| **Vectors** | Vectorize | Semantic search embeddings |
-| **Embeddings** | Workers AI | bge-small-en-v1.5 (384 dimensions) |
-| **MCP Bridge** | Node.js | Claude Desktop integration |
+| **Edge API** | Cloudflare Workers | REST API in 300+ cities worldwide |
+| **Memory Storage** | D1 (SQLite) | Content, tags, timestamps |
+| **Semantic Search** | Vectorize | Find memories by meaning, not keywords |
+| **AI Embeddings** | Workers AI | bge-small-en-v1.5 (384 dimensions) |
+| **Device Bridge** | Node.js MCP | Works with Claude, Cursor, VS Code
 
 ## Documentation
 
@@ -53,34 +65,47 @@ A globally distributed, SHODH-compatible memory system running on Cloudflare's e
 - 📖 [**Development Journey**](JOURNEY.md) - How we built this
 - 📝 [**Changelog**](CHANGELOG.md) - Version history
 
-## Quick Start (New Device)
+## Quick Start
 
-> **First time installing?** See the [complete installation guide](docs/INSTALLATION.md) for Worker deployment + client setup.
+> **First-time setup?** You'll deploy the Worker once, then add devices anytime. See [complete guide](docs/INSTALLATION.md).
 
-> **Prerequisites**: Check [requirements](docs/PREREQUISITES.md) first (Node.js 18+, Cloudflare account)
+### Express Setup (2 Minutes)
 
-### Option 1: Automated Setup (Recommended)
+**Already have a Worker running?** Add this device:
 
 ```bash
-# Clone the repository
+# Clone and setup
 git clone https://github.com/YOUR_USER/shodh-cloudflare.git
 cd shodh-cloudflare
-
-# Run the setup script
 ./scripts/setup-client.sh
 ```
 
-The script will:
-- ✅ Verify prerequisites (Node.js, npm)
-- ✅ Install MCP bridge dependencies
-- ✅ Ask for your Worker URL and API key
-- ✅ Validate Worker connectivity
-- ✅ Generate Claude Desktop configuration
-- ✅ Offer to run verification tests
+The script asks for your Worker URL and API key, then configures Claude Desktop automatically.
 
-### Option 2: Manual Setup
+**Need to deploy the Worker first?** Quick reference:
 
-For manual setup instructions, see [Installation Guide - Manual Setup](docs/INSTALLATION.md#step-2b-manual-setup-alternative).
+```bash
+# 1. Create resources
+wrangler d1 create shodh-memory
+wrangler vectorize create shodh-vectors --dimensions=384 --metric=cosine
+
+# 2. Deploy
+cd worker && npm install && npm run deploy
+
+# 3. Set API key
+wrangler secret put API_KEY
+```
+
+<details>
+<summary>📖 <b>Detailed setup guide</b> (first-time deployment, troubleshooting)</summary>
+
+See the [complete installation guide](docs/INSTALLATION.md) for:
+- Prerequisites check (Node.js 18+, Cloudflare account)
+- Step-by-step Worker deployment with verification
+- Multi-device setup instructions
+- Troubleshooting common issues
+
+</details>
 
 ## Client Configuration
 
@@ -187,6 +212,7 @@ If all commands work, you're ready to go! 🎉
 | `/` | GET | Health check |
 | `/api/remember` | POST | Store a memory |
 | `/api/recall` | POST | Semantic search |
+| `/api/recall/by-tags` | POST | Tag-based search |
 | `/api/context` | POST | Proactive context surfacing |
 | `/api/memories` | GET | List all memories |
 | `/api/memory/:id` | GET | Get specific memory |
@@ -194,6 +220,7 @@ If all commands work, you're ready to go! 🎉
 | `/api/forget/by-tags` | POST | Delete by tags |
 | `/api/tags` | GET | List all tags |
 | `/api/stats` | GET | Memory statistics |
+| `/api/consolidate` | POST | Memory consolidation |
 | `/api/reindex` | POST | Re-index vectors |
 
 ## MCP Tools
@@ -253,6 +280,33 @@ For troubleshooting Worker deployment issues, see [Troubleshooting - Worker Depl
 - `Context` - Contextual information
 - `Task` - Task-related
 - `Conversation` - Auto-ingested conversations
+
+## OpenAPI Specification Compliance
+
+This implementation follows the [SHODH Memory API Specification v1.0.0](specs/README.md), ensuring compatibility across the SHODH ecosystem.
+
+**✅ Fully Compliant Endpoints:**
+- `POST /api/remember` - Store memories with full metadata support
+- `POST /api/recall` - Semantic search with vector embeddings
+- `POST /api/recall/by-tags` - Tag-based memory retrieval
+- `POST /api/context` - Proactive context surfacing
+- `DELETE /api/forget/{id}` - Delete specific memory
+- `POST /api/forget/by-tags` - Bulk delete by tags
+- `GET /api/memories` - List all memories with pagination
+- `GET /api/memory/{id}` - Get specific memory
+- `POST /api/consolidate` - Memory consolidation with Hebbian associations
+- `GET /api/stats` - Memory statistics
+- `GET /api/tags` - List all unique tags
+
+**Schema Compliance:**
+All unified fields from the specification are supported:
+- **Core**: `content`, `content_hash`, `type`, `tags`
+- **Source & Trust**: `source_type`, `credibility`
+- **Emotional Metadata**: `emotion`, `emotional_valence`, `emotional_arousal`
+- **Episodic Memory**: `episode_id`, `sequence_number`, `preceding_memory_id`
+- **Quality & Access**: `quality_score`, `access_count`, `last_accessed_at`
+
+For complete API documentation, see [specs/openapi.yaml](specs/openapi.yaml).
 
 ## Acknowledgments
 
