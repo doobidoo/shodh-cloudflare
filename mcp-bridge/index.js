@@ -50,7 +50,7 @@ async function apiRequest(endpoint, method = "GET", body = null) {
 const server = new Server(
   {
     name: "shodh-cloudflare",
-    version: "1.0.0",
+    version: "1.1.0",
   },
   {
     capabilities: {
@@ -134,8 +134,43 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               default: "hybrid",
               description: "Retrieval mode",
             },
+            quality_boost: {
+              type: "boolean",
+              default: false,
+              description: "Enable quality-based reranking (over-fetches 3x, reranks by composite score)",
+            },
+            quality_weight: {
+              type: "number",
+              default: 0.3,
+              description: "Weight for quality vs semantic (0.0-1.0, default 0.3 = 30% quality)",
+            },
           },
           required: ["query"],
+        },
+      },
+      {
+        name: "recall_by_tags",
+        description: "Search memories by tags. Returns memories matching the specified tags.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            tags: {
+              type: "array",
+              items: { type: "string" },
+              description: "Tags to search for",
+            },
+            limit: {
+              type: "number",
+              default: 10,
+              description: "Maximum number of results (default: 10)",
+            },
+            match_all: {
+              type: "boolean",
+              default: false,
+              description: "If true, only return memories matching ALL tags",
+            },
+          },
+          required: ["tags"],
         },
       },
       {
@@ -236,6 +271,75 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
         },
       },
+      {
+        name: "update_memory",
+        description: "Update memory metadata without changing content. Use for adding tags, changing type, or updating emotional context.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            id: {
+              type: "string",
+              description: "The ID of the memory to update",
+            },
+            tags: {
+              type: "array",
+              items: { type: "string" },
+              description: "Replace existing tags with these",
+            },
+            type: {
+              type: "string",
+              enum: ["Observation", "Decision", "Learning", "Error", "Discovery", "Pattern", "Context", "Task", "CodeEdit", "FileAccess", "Search", "Command", "Conversation"],
+              description: "Update memory type",
+            },
+            emotion: {
+              type: "string",
+              description: "Update emotion label",
+            },
+            emotional_valence: {
+              type: "number",
+              description: "Update emotional valence (-1.0 to 1.0)",
+            },
+            emotional_arousal: {
+              type: "number",
+              description: "Update emotional arousal (0.0 to 1.0)",
+            },
+            credibility: {
+              type: "number",
+              description: "Update credibility score (0.0 to 1.0)",
+            },
+            episode_id: {
+              type: "string",
+              description: "Assign to an episode",
+            },
+          },
+          required: ["id"],
+        },
+      },
+      {
+        name: "consolidate",
+        description: "Trigger memory consolidation. Applies exponential decay to quality scores and archives very low quality memories.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            time_horizon: {
+              type: "string",
+              enum: ["daily", "weekly", "monthly", "quarterly", "yearly"],
+              default: "weekly",
+              description: "Time horizon for consolidation",
+            },
+            decay_rate: {
+              type: "number",
+              default: 0.95,
+              description: "Decay rate for quality scores (0.0-1.0)",
+            },
+            quality_threshold: {
+              type: "number",
+              default: 0.1,
+              description: "Threshold below which memories are archived",
+            },
+          },
+        },
+      },
     ],
   };
 });
@@ -268,6 +372,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           query: args.query,
           limit: args.limit || 5,
           mode: args.mode || "hybrid",
+          quality_boost: args.quality_boost || false,
+          quality_weight: args.quality_weight,
+        });
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "recall_by_tags": {
+        const result = await apiRequest("/api/recall/by-tags", "POST", {
+          tags: args.tags,
+          limit: args.limit || 10,
+          match_all: args.match_all || false,
         });
         return {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
@@ -327,7 +444,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           apiRequest(`/api/memories?type=Learning&limit=${args.max_items || 5}`),
           apiRequest(`/api/memories?type=Context&limit=${args.max_items || 5}`),
         ]);
-        
+
         const summary = {
           recent_decisions: decisions.memories || [],
           recent_learnings: learnings.memories || [],
@@ -335,6 +452,33 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
         return {
           content: [{ type: "text", text: JSON.stringify(summary, null, 2) }],
+        };
+      }
+
+      case "update_memory": {
+        const updateData = {};
+        if (args.tags !== undefined) updateData.tags = args.tags;
+        if (args.type !== undefined) updateData.type = args.type;
+        if (args.emotion !== undefined) updateData.emotion = args.emotion;
+        if (args.emotional_valence !== undefined) updateData.emotional_valence = args.emotional_valence;
+        if (args.emotional_arousal !== undefined) updateData.emotional_arousal = args.emotional_arousal;
+        if (args.credibility !== undefined) updateData.credibility = args.credibility;
+        if (args.episode_id !== undefined) updateData.episode_id = args.episode_id;
+
+        const result = await apiRequest(`/api/memories/${args.id}`, "PATCH", updateData);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "consolidate": {
+        const result = await apiRequest("/api/consolidate", "POST", {
+          time_horizon: args.time_horizon || "weekly",
+          decay_rate: args.decay_rate,
+          quality_threshold: args.quality_threshold,
+        });
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
       }
 

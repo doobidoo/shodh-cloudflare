@@ -15,6 +15,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Updated `README.md` to provide distinct configuration instructions for both Claude Desktop and generic Gemini clients.
 
+---
+
+## [1.1.0] - 2026-01-02
+
+### Added
+
+#### OpenAPI Specification Compliance
+- **specs/ directory** with complete OpenAPI 3.1 specification from parent repo
+  - `specs/openapi.yaml` - Machine-readable API definition
+  - `specs/schemas/memory.md` - Human-readable schema documentation
+  - `specs/README.md` - Quick start guide
+
+#### New API Endpoints
+- `GET /api/health` - Detailed health check endpoint (OpenAPI compliant)
+- `POST /api/recall/by-tags` - Tag-based memory search without vector query
+- `PATCH /api/memories/:id` - Update memory metadata (tags, type, emotions, etc.)
+- `POST /api/consolidate` - Trigger memory consolidation with exponential decay
+
+#### Quality-Boosted Search
+- `/api/recall` now supports `quality_boost` and `quality_weight` parameters
+- Over-fetches 3x candidates and re-ranks by composite score
+- Composite score: `(1 - weight) * semantic + weight * quality`
+
+#### New MCP Tools (3 new, 1 enhanced)
+- `recall_by_tags` - Tag-based search
+- `update_memory` - Update memory metadata
+- `consolidate` - Trigger memory consolidation
+- `recall` - Enhanced with quality_boost/quality_weight parameters
+
+### Changed
+- Route consistency: `/api/memory/:id` renamed to `/api/memories/:id`
+- README.md updated with new endpoints and tools
+
+### Notes
+This release aligns shodh-cloudflare with the unified SHODH Memory API specification
+defined in [PR #3](https://github.com/varun29ankuS/shodh-memory/pull/3).
+
+---
+
 ## [1.0.0] - 2025-12-20
 
 ### Added

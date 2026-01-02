@@ -28,7 +28,14 @@
       "Bash(powershell -Command \"[Environment]::SetEnvironmentVariable\\(''SHODH_CLOUDFLARE_API_KEY'', ''sdmpwc'', ''User''\\)\")",
       "Bash(powershell -Command:*)",
       "mcp__memory__store_memory",
-      "Skill(voice)"
+      "Skill(voice)",
+      "Bash(git -C /home/hkr/repositories/shodh-cloudflare add CHANGELOG.md README.md)",
+      "Bash(git -C /home/hkr/repositories/shodh-cloudflare rebase --continue)",
+      "Bash(git -C /home/hkr/repositories/shodh-cloudflare status:*)",
+      "Bash(git -C /home/hkr/repositories/shodh-cloudflare add specs/)",
+      "Bash(GIT_EDITOR=true git rebase:*)",
+      "Bash(git -C /home/hkr/repositories/shodh-cloudflare diff --check)",
+      "Bash(GIT_EDITOR=\"cat\" git rebase --continue)"
     ]
   }
 }

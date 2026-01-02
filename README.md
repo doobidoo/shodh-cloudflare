@@ -207,34 +207,43 @@ If all commands work, you're ready to go! 🎉
 
 ## API Endpoints
 
+Compliant with [SHODH Memory API Specification](./specs/README.md) (OpenAPI 3.1).
+
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/` | GET | Health check |
+| `/` | GET | Health check (basic) |
+| `/api/health` | GET | Health check (detailed) |
 | `/api/remember` | POST | Store a memory |
-| `/api/recall` | POST | Semantic search |
+| `/api/recall` | POST | Semantic search (with quality boost) |
 | `/api/recall/by-tags` | POST | Tag-based search |
 | `/api/context` | POST | Proactive context surfacing |
 | `/api/memories` | GET | List all memories |
-| `/api/memory/:id` | GET | Get specific memory |
+| `/api/memories/:id` | GET | Get specific memory |
+| `/api/memories/:id` | PATCH | Update memory metadata |
 | `/api/forget/:id` | DELETE | Delete memory |
 | `/api/forget/by-tags` | POST | Delete by tags |
 | `/api/tags` | GET | List all tags |
 | `/api/stats` | GET | Memory statistics |
-| `/api/consolidate` | POST | Memory consolidation |
+| `/api/consolidate` | POST | Trigger memory consolidation |
 | `/api/reindex` | POST | Re-index vectors |
 
 ## MCP Tools
 
 Once configured, these tools are available in Claude:
 
-- `remember` - Store a memory
-- `recall` - Semantic search
-- `proactive_context` - Surface relevant memories
-- `list_memories` - List all memories
-- `forget` - Delete by ID
-- `forget_by_tags` - Delete by tags
-- `memory_stats` - Get statistics
-- `context_summary` - Recent learnings/decisions
+| Tool | Description |
+|------|-------------|
+| `remember` | Store a memory with metadata |
+| `recall` | Semantic search (supports quality_boost) |
+| `recall_by_tags` | Tag-based search |
+| `proactive_context` | Surface relevant memories |
+| `list_memories` | List all memories |
+| `forget` | Delete by ID |
+| `forget_by_tags` | Delete by tags |
+| `update_memory` | Update memory metadata |
+| `memory_stats` | Get statistics |
+| `context_summary` | Recent learnings/decisions |
+| `consolidate` | Trigger memory consolidation |
 
 ## Deploying Your Own Instance
 

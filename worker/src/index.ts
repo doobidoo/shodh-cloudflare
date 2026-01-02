@@ -59,6 +59,18 @@ interface RecallRequest {
   limit?: number;
   mode?: 'semantic' | 'associative' | 'hybrid';
   memory_types?: string[];
+  quality_boost?: boolean;
+  quality_weight?: number;
+}
+
+interface UpdateMemoryRequest {
+  tags?: string[];
+  type?: string;
+  emotion?: string;
+  emotional_valence?: number;
+  emotional_arousal?: number;
+  credibility?: number;
+  episode_id?: string;
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -83,12 +95,25 @@ app.use('/api/*', async (c, next) => {
   await next();
 });
 
-// Health check
+// Health check (root)
 app.get('/', (c) => {
-  return c.json({ 
+  return c.json({
     service: 'shodh-cloudflare',
     status: 'healthy',
-    version: '1.0.0'
+    version: '1.1.0'
+  });
+});
+
+/**
+ * GET /api/health - Health check (OpenAPI compliant)
+ */
+app.get('/api/health', (c) => {
+  return c.json({
+    service: 'shodh-cloudflare',
+    status: 'healthy',
+    version: '1.1.0',
+    database: 'cloudflare-d1',
+    vector_store: 'cloudflare-vectorize'
   });
 });
 
@@ -190,23 +215,28 @@ app.post('/api/remember', async (c) => {
 });
 
 /**
- * POST /api/recall - Semantic memory search
+ * POST /api/recall - Semantic memory search with optional quality boost
  */
 app.post('/api/recall', async (c) => {
   const body = await c.req.json<RecallRequest>();
-  
+
   if (!body.query) {
     return c.json({ error: 'Query is required' }, 400);
   }
 
   const limit = Math.min(body.limit || 5, 20);
+  const qualityBoost = body.quality_boost ?? false;
+  const qualityWeight = Math.min(Math.max(body.quality_weight ?? 0.3, 0), 1);
 
   // Generate query embedding
   const queryEmbedding = await generateEmbedding(c.env.AI, body.query);
 
+  // Over-fetch if quality boost is enabled (3x candidates)
+  const fetchLimit = qualityBoost ? limit * 3 : limit;
+
   // Search Vectorize
   const vectorResults = await c.env.VECTORIZE.query(queryEmbedding, {
-    topK: limit,
+    topK: fetchLimit,
     returnMetadata: 'all'
   });
 
@@ -217,33 +247,95 @@ app.post('/api/recall', async (c) => {
   // Get full memory data from D1
   const ids = vectorResults.matches.map(m => m.id);
   const placeholders = ids.map(() => '?').join(',');
-  
+
   const memories = await c.env.DB.prepare(`
     SELECT * FROM memories WHERE id IN (${placeholders})
   `).bind(...ids).all<Memory>();
 
-  // Update access counts
-  await c.env.DB.prepare(`
-    UPDATE memories 
-    SET access_count = access_count + 1, 
-        last_accessed_at = datetime('now')
-    WHERE id IN (${placeholders})
-  `).bind(...ids).run();
-
   // Merge vector scores with memory data
-  const results = vectorResults.matches.map(match => {
+  let results = vectorResults.matches.map(match => {
     const memory = memories.results?.find(m => m.id === match.id);
+    if (!memory) return null;
+
+    const semanticScore = match.score || 0;
+    const qualityScore = memory.quality_score || 0.5;
+
+    // Composite score: (1 - weight) * semantic + weight * quality
+    const compositeScore = qualityBoost
+      ? (1 - qualityWeight) * semanticScore + qualityWeight * qualityScore
+      : semanticScore;
+
     return {
       ...memory,
-      tags: memory?.tags ? JSON.parse(memory.tags) : [],
-      similarity_score: match.score
+      tags: memory.tags ? JSON.parse(memory.tags) : [],
+      similarity_score: semanticScore,
+      quality_score: qualityScore,
+      composite_score: compositeScore
     };
   }).filter(Boolean);
+
+  // Re-rank by composite score if quality boost enabled
+  if (qualityBoost) {
+    results.sort((a: any, b: any) => b.composite_score - a.composite_score);
+    results = results.slice(0, limit);
+  }
+
+  // Update access counts for returned results
+  const returnedIds = results.map((r: any) => r.id);
+  if (returnedIds.length > 0) {
+    const returnedPlaceholders = returnedIds.map(() => '?').join(',');
+    await c.env.DB.prepare(`
+      UPDATE memories
+      SET access_count = access_count + 1,
+          last_accessed_at = datetime('now')
+      WHERE id IN (${returnedPlaceholders})
+    `).bind(...returnedIds).run();
+  }
 
   return c.json({
     memories: results,
     count: results.length,
-    query: body.query
+    query: body.query,
+    quality_boost: qualityBoost
+  });
+});
+
+/**
+ * POST /api/recall/by-tags - Tag-based memory search
+ */
+app.post('/api/recall/by-tags', async (c) => {
+  const body = await c.req.json<{ tags: string[]; limit?: number; match_all?: boolean }>();
+
+  if (!body.tags || body.tags.length === 0) {
+    return c.json({ error: 'Tags are required' }, 400);
+  }
+
+  const limit = Math.min(body.limit || 10, 100);
+  const matchAll = body.match_all ?? false;
+
+  // Build tag conditions
+  const tagConditions = body.tags.map(tag =>
+    `tags LIKE '%"${tag}"%'`
+  );
+
+  const whereClause = matchAll
+    ? tagConditions.join(' AND ')
+    : tagConditions.join(' OR ');
+
+  const memories = await c.env.DB.prepare(`
+    SELECT * FROM memories
+    WHERE ${whereClause}
+    ORDER BY created_at DESC
+    LIMIT ?
+  `).bind(limit).all<Memory>();
+
+  return c.json({
+    memories: memories.results?.map(m => ({
+      ...m,
+      tags: m.tags ? JSON.parse(m.tags) : []
+    })) || [],
+    count: memories.results?.length || 0,
+    matched_tags: body.tags
   });
 });
 
@@ -333,11 +425,11 @@ app.get('/api/memories', async (c) => {
 });
 
 /**
- * GET /api/memory/:id - Get a specific memory
+ * GET /api/memories/:id - Get a specific memory
  */
-app.get('/api/memory/:id', async (c) => {
+app.get('/api/memories/:id', async (c) => {
   const id = c.req.param('id');
-  
+
   const memory = await c.env.DB.prepare(
     'SELECT * FROM memories WHERE id = ?'
   ).bind(id).first<Memory>();
@@ -349,6 +441,82 @@ app.get('/api/memory/:id', async (c) => {
   return c.json({
     ...memory,
     tags: memory.tags ? JSON.parse(memory.tags) : []
+  });
+});
+
+/**
+ * PATCH /api/memories/:id - Update memory metadata
+ */
+app.patch('/api/memories/:id', async (c) => {
+  const id = c.req.param('id');
+  const body = await c.req.json<UpdateMemoryRequest>();
+
+  // Check if memory exists
+  const existing = await c.env.DB.prepare(
+    'SELECT id FROM memories WHERE id = ?'
+  ).bind(id).first();
+
+  if (!existing) {
+    return c.json({ error: 'Memory not found' }, 404);
+  }
+
+  // Build dynamic update query
+  const updates: string[] = [];
+  const values: any[] = [];
+
+  if (body.tags !== undefined) {
+    updates.push('tags = ?');
+    values.push(JSON.stringify(body.tags));
+  }
+  if (body.type !== undefined) {
+    updates.push('memory_type = ?');
+    values.push(body.type);
+  }
+  if (body.emotion !== undefined) {
+    updates.push('emotion = ?');
+    values.push(body.emotion);
+  }
+  if (body.emotional_valence !== undefined) {
+    updates.push('emotional_valence = ?');
+    values.push(body.emotional_valence);
+  }
+  if (body.emotional_arousal !== undefined) {
+    updates.push('emotional_arousal = ?');
+    values.push(body.emotional_arousal);
+  }
+  if (body.credibility !== undefined) {
+    updates.push('credibility = ?');
+    values.push(body.credibility);
+  }
+  if (body.episode_id !== undefined) {
+    updates.push('episode_id = ?');
+    values.push(body.episode_id);
+  }
+
+  if (updates.length === 0) {
+    return c.json({ error: 'No fields to update' }, 400);
+  }
+
+  updates.push('updated_at = datetime(\'now\')');
+  values.push(id);
+
+  await c.env.DB.prepare(`
+    UPDATE memories
+    SET ${updates.join(', ')}
+    WHERE id = ?
+  `).bind(...values).run();
+
+  // Return updated memory
+  const updated = await c.env.DB.prepare(
+    'SELECT * FROM memories WHERE id = ?'
+  ).bind(id).first<Memory>();
+
+  return c.json({
+    success: true,
+    memory: {
+      ...updated,
+      tags: updated?.tags ? JSON.parse(updated.tags) : []
+    }
   });
 });
 
@@ -544,6 +712,82 @@ app.post('/api/context', async (c) => {
     count: memories.length,
     ingested: autoIngest,
     ingested_id: ingestedId
+  });
+});
+
+/**
+ * POST /api/consolidate - Trigger memory consolidation
+ *
+ * Performs basic consolidation:
+ * - Applies exponential decay to quality scores
+ * - Archives low-quality old memories (soft delete)
+ * - Returns consolidation statistics
+ */
+app.post('/api/consolidate', async (c) => {
+  const body = await c.req.json<{
+    time_horizon?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly';
+    decay_rate?: number;
+    quality_threshold?: number;
+  }>();
+
+  const timeHorizon = body.time_horizon || 'weekly';
+  const decayRate = body.decay_rate ?? 0.95;
+  const qualityThreshold = body.quality_threshold ?? 0.1;
+
+  // Calculate days based on time horizon
+  const daysMap: Record<string, number> = {
+    daily: 1,
+    weekly: 7,
+    monthly: 30,
+    quarterly: 90,
+    yearly: 365
+  };
+  const days = daysMap[timeHorizon] || 7;
+
+  // Get memories older than the time horizon that haven't been accessed recently
+  const oldMemories = await c.env.DB.prepare(`
+    SELECT id, quality_score, access_count, created_at, last_accessed_at
+    FROM memories
+    WHERE created_at < datetime('now', '-' || ? || ' days')
+  `).bind(days).all<{
+    id: string;
+    quality_score: number;
+    access_count: number;
+    created_at: string;
+    last_accessed_at: string | null;
+  }>();
+
+  let decayed = 0;
+  let archived = 0;
+
+  if (oldMemories.results && oldMemories.results.length > 0) {
+    for (const memory of oldMemories.results) {
+      // Apply exponential decay to quality score
+      const newQuality = (memory.quality_score || 0.5) * decayRate;
+
+      if (newQuality < qualityThreshold) {
+        // Archive (delete) very low quality memories
+        await c.env.DB.prepare('DELETE FROM memories WHERE id = ?').bind(memory.id).run();
+        await c.env.VECTORIZE.deleteByIds([memory.id]);
+        archived++;
+      } else {
+        // Update decayed quality score
+        await c.env.DB.prepare(`
+          UPDATE memories SET quality_score = ?, updated_at = datetime('now') WHERE id = ?
+        `).bind(newQuality, memory.id).run();
+        decayed++;
+      }
+    }
+  }
+
+  return c.json({
+    success: true,
+    time_horizon: timeHorizon,
+    processed: oldMemories.results?.length || 0,
+    decayed: decayed,
+    archived: archived,
+    decay_rate: decayRate,
+    quality_threshold: qualityThreshold
   });
 });
 
