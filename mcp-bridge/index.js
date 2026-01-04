@@ -50,7 +50,7 @@ async function apiRequest(endpoint, method = "GET", body = null) {
 const server = new Server(
   {
     name: "shodh-cloudflare",
-    version: "1.1.0",
+    version: "1.1.1",
   },
   {
     capabilities: {
@@ -112,6 +112,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
           required: ["content"],
         },
+        annotations: {
+          title: "Store Memory",
+          destructiveHint: false,
+        },
       },
       {
         name: "recall",
@@ -147,6 +151,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
           required: ["query"],
         },
+        annotations: {
+          title: "Search Memories",
+          readOnlyHint: true,
+        },
       },
       {
         name: "recall_by_tags",
@@ -172,6 +180,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
           required: ["tags"],
         },
+        annotations: {
+          title: "Search by Tags",
+          readOnlyHint: true,
+        },
       },
       {
         name: "proactive_context",
@@ -196,6 +208,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
           required: ["context"],
         },
+        annotations: {
+          title: "Proactive Context",
+          destructiveHint: false,
+        },
       },
       {
         name: "list_memories",
@@ -219,6 +235,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
           },
         },
+        annotations: {
+          title: "List Memories",
+          readOnlyHint: true,
+        },
       },
       {
         name: "forget",
@@ -232,6 +252,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
           },
           required: ["id"],
+        },
+        annotations: {
+          title: "Delete Memory",
+          destructiveHint: true,
         },
       },
       {
@@ -248,6 +272,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
           required: ["tags"],
         },
+        annotations: {
+          title: "Delete by Tags",
+          destructiveHint: true,
+        },
       },
       {
         name: "memory_stats",
@@ -255,6 +283,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         inputSchema: {
           type: "object",
           properties: {},
+        },
+        annotations: {
+          title: "Memory Statistics",
+          readOnlyHint: true,
         },
       },
       {
@@ -269,6 +301,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               description: "Maximum items per category",
             },
           },
+        },
+        annotations: {
+          title: "Context Summary",
+          readOnlyHint: true,
         },
       },
       {
@@ -314,6 +350,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
           required: ["id"],
         },
+        annotations: {
+          title: "Update Memory",
+          destructiveHint: true,
+        },
       },
       {
         name: "consolidate",
@@ -338,6 +378,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               description: "Threshold below which memories are archived",
             },
           },
+        },
+        annotations: {
+          title: "Consolidate Memories",
+          destructiveHint: true,
         },
       },
     ],
