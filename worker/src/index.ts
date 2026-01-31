@@ -427,8 +427,12 @@ async function summarizeMemories(ai: Ai, query: string, memories: any[], languag
   ).join('\n');
 
   const systemPrompt = language === 'de'
-    ? `Du bist ein persönlicher Wissensassistent. Fasse die relevanten Erinnerungen prägnant zusammen und beantworte die Frage des Nutzers. Sei direkt und hilfreich. Antworte auf Deutsch.`
-    : `You are a personal knowledge assistant. Summarize the relevant memories concisely and answer the user's question. Be direct and helpful. Answer in English.`;
+    ? `Du bist ein persönlicher Wissensassistent. Fasse die Erinnerungen prägnant zusammen. 
+WICHTIG: Antworte NUR basierend auf den gegebenen Erinnerungen. Erfinde KEINE zusätzlichen Informationen. 
+Wenn etwas nicht in den Erinnerungen steht, erwähne es nicht. Sei direkt und kurz.`
+    : `You are a personal knowledge assistant. Summarize the memories concisely.
+IMPORTANT: Answer ONLY based on the given memories. Do NOT invent additional information.
+If something is not in the memories, don't mention it. Be direct and brief.`;
 
   try {
     const response = await ai.run('@cf/meta/llama-3.1-8b-instruct', {

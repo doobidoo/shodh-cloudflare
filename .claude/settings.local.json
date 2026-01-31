@@ -27,7 +27,14 @@
       "Read(//Users/hkr/Documents/GitHub/mcp-memory-service/**)",
       "Read(//Users/hkr/Documents/GitHub/SecondBrain/**)",
       "Bash(gh:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(npx wrangler deploy)",
+      "mcp__shodh-cloudflare__remember",
+      "mcp__memory__memory_store"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "notion-todo",
+    "memory"
+  ]
 }
