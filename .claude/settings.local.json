@@ -30,7 +30,14 @@
       "Bash(git push:*)",
       "Bash(npx wrangler deploy)",
       "mcp__shodh-cloudflare__remember",
-      "mcp__memory__memory_store"
+      "mcp__memory__memory_store",
+      "mcp__memory__memory_search",
+      "mcp__memory__memory_list",
+      "Bash(END_ISO\" for week ranges\n- Validation: Week numbers 1-53, rejects invalid input\n- Year boundary handling: KW 1 2025 starts Dec 30, 2024\n\nTotal temporal patterns: 51 → 65 \\(+14 KW patterns\\)\n\nAll tests passing. Backwards compatible.\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(for id in 1103cae4-8fb9-4c66-bb1c-fb31555e62bb c9ad91f4-6f7b-4e00-ab7c-7c4c57d11cfb 474089d3-99c6-4c12-b5e5-cc8b4bf8e33e be4260e5-0fd5-408d-a1c9-5a8a2aede5bf 4ab4f00c-6cfb-4f75-b1bd-c2df2ce3a1eb 481e1fe5-6dde-4a45-881c-1ffc659c0609 2e1eb9af-0c5b-4acd-a593-1595be529440 191fbe82-dd85-463f-9cce-eee49da45a89 0f5bca80-e0d0-48f3-b8fb-e95b72f8ffc1)",
+      "Bash(do:*)",
+      "Bash(echo:*)",
+      "Bash(done)"
     ]
   },
   "enabledMcpjsonServers": [

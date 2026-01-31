@@ -8,6 +8,46 @@ export interface TemporalParserOptions {
   now?: Date;
 }
 
+// Number words to digit mapping (for voice dictation like "KW eins")
+const numberWords: Record<string, number> = {
+  // German
+  'eins': 1, 'zwei': 2, 'drei': 3, 'vier': 4, 'fünf': 5,
+  'sechs': 6, 'sieben': 7, 'acht': 8, 'neun': 9, 'zehn': 10,
+  'elf': 11, 'zwölf': 12, 'dreizehn': 13, 'vierzehn': 14, 'fünfzehn': 15,
+  'sechzehn': 16, 'siebzehn': 17, 'achtzehn': 18, 'neunzehn': 19, 'zwanzig': 20,
+  'einundzwanzig': 21, 'zweiundzwanzig': 22, 'dreiundzwanzig': 23, 'vierundzwanzig': 24,
+  'fünfundzwanzig': 25, 'sechsundzwanzig': 26, 'siebenundzwanzig': 27, 'achtundzwanzig': 28,
+  'neunundzwanzig': 29, 'dreißig': 30, 'einunddreißig': 31, 'zweiunddreißig': 32,
+  'dreiunddreißig': 33, 'vierunddreißig': 34, 'fünfunddreißig': 35, 'sechsunddreißig': 36,
+  'siebenunddreißig': 37, 'achtunddreißig': 38, 'neununddreißig': 39, 'vierzig': 40,
+  'einundvierzig': 41, 'zweiundvierzig': 42, 'dreiundvierzig': 43, 'vierundvierzig': 44,
+  'fünfundvierzig': 45, 'sechsundvierzig': 46, 'siebenundvierzig': 47, 'achtundvierzig': 48,
+  'neunundvierzig': 49, 'fünfzig': 50, 'einundfünfzig': 51, 'zweiundfünfzig': 52, 'dreiundfünfzig': 53,
+  // English
+  'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+  'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
+  'eleven': 11, 'twelve': 12, 'thirteen': 13, 'fourteen': 14, 'fifteen': 15,
+  'sixteen': 16, 'seventeen': 17, 'eighteen': 18, 'nineteen': 19, 'twenty': 20,
+  'twenty-one': 21, 'twenty-two': 22, 'twenty-three': 23, 'twenty-four': 24,
+  'twenty-five': 25, 'twenty-six': 26, 'twenty-seven': 27, 'twenty-eight': 28,
+  'twenty-nine': 29, 'thirty': 30, 'thirty-one': 31, 'thirty-two': 32,
+  'thirty-three': 33, 'thirty-four': 34, 'thirty-five': 35, 'thirty-six': 36,
+  'thirty-seven': 37, 'thirty-eight': 38, 'thirty-nine': 39, 'forty': 40,
+  'forty-one': 41, 'forty-two': 42, 'forty-three': 43, 'forty-four': 44,
+  'forty-five': 45, 'forty-six': 46, 'forty-seven': 47, 'forty-eight': 48,
+  'forty-nine': 49, 'fifty': 50, 'fifty-one': 51, 'fifty-two': 52, 'fifty-three': 53
+};
+
+// Parse number from digit or word
+function parseNumber(str: string): number | null {
+  const trimmed = str.trim().toLowerCase();
+  // Try digit first
+  const digit = parseInt(trimmed);
+  if (!isNaN(digit)) return digit;
+  // Try word
+  return numberWords[trimmed] ?? null;
+}
+
 // Helper to get ISO week number from a date
 function getISOWeek(date: Date): number {
   const target = new Date(date.valueOf());
@@ -229,10 +269,12 @@ export function parseTemporalExpression(
   }
 
   // Calendar Week patterns (ISO 8601)
-  // German: "KW 49", "KW49", "KW 1 2024", "Kalenderwoche 3"
-  let kwMatch = lowerSince.match(/^(?:kw|kalenderwoche)\s*(\d{1,2})(?:\s+(\d{4}))?$/i);
+  // German: "KW 49", "KW49", "KW 1 2024", "Kalenderwoche 3", "KW eins", "KW fünf"
+  // Supports both digits and number words (for voice dictation)
+  let kwMatch = lowerSince.match(/^(?:kw|kalenderwoche)\s*(\d{1,2}|[a-zäöüß]+)(?:\s+(\d{4}))?$/i);
   if (kwMatch) {
-    const weekNum = parseInt(kwMatch[1]);
+    const weekNum = parseNumber(kwMatch[1]);
+    if (weekNum === null) return null; // Could not parse number
     const year = kwMatch[2] ? parseInt(kwMatch[2]) : now.getFullYear();
 
     // Validate week number (1-53)
@@ -247,10 +289,12 @@ export function parseTemporalExpression(
     return `${monday.toISOString()}|${sunday.toISOString()}`;
   }
 
-  // English: "week 52", "week52", "week 1 2024", "CW 49"
-  let weekMatch = lowerSince.match(/^(?:week|cw)\s*(\d{1,2})(?:\s+(\d{4}))?$/i);
+  // English: "week 52", "week52", "week 1 2024", "CW 49", "week one", "week five"
+  // Supports both digits and number words (for voice dictation)
+  let weekMatch = lowerSince.match(/^(?:week|cw)\s*(\d{1,2}|[a-z-]+)(?:\s+(\d{4}))?$/i);
   if (weekMatch) {
-    const weekNum = parseInt(weekMatch[1]);
+    const weekNum = parseNumber(weekMatch[1]);
+    if (weekNum === null) return null; // Could not parse number
     const year = weekMatch[2] ? parseInt(weekMatch[2]) : now.getFullYear();
 
     // Validate week number (1-53)
