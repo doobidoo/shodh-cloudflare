@@ -63,6 +63,7 @@ interface RecallRequest {
   quality_weight?: number;
   summarize?: boolean;
   language?: string;
+  since?: string;  // ISO date or relative: "today", "yesterday", "7d", "30d"
 }
 
 interface UpdateMemoryRequest {
@@ -142,6 +143,42 @@ async function generateEmbedding(ai: Ai, text: string): Promise<number[]> {
 // Generate UUID
 function generateId(): string {
   return crypto.randomUUID();
+}
+
+// Parse relative time expressions to ISO date
+function parseSinceDate(since: string): string | null {
+  const now = new Date();
+  const lowerSince = since.toLowerCase().trim();
+  
+  if (lowerSince === 'today' || lowerSince === 'heute') {
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return today.toISOString();
+  }
+  if (lowerSince === 'yesterday' || lowerSince === 'gestern') {
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    return yesterday.toISOString();
+  }
+  if (lowerSince === 'this week' || lowerSince === 'diese woche') {
+    const dayOfWeek = now.getDay();
+    const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+    return monday.toISOString();
+  }
+  
+  // Parse "Xd" format (e.g., "7d" = 7 days ago)
+  const daysMatch = lowerSince.match(/^(\d+)d$/);
+  if (daysMatch) {
+    const daysAgo = parseInt(daysMatch[1]);
+    const date = new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000);
+    return date.toISOString();
+  }
+  
+  // Try parsing as ISO date
+  const parsed = new Date(since);
+  if (!isNaN(parsed.getTime())) {
+    return parsed.toISOString();
+  }
+  
+  return null;
 }
 
 // AI Classification result interface
@@ -359,6 +396,99 @@ app.post('/api/recall', async (c) => {
   const qualityWeight = Math.min(Math.max(body.quality_weight ?? 0.3, 0), 1);
   const summarize = body.summarize ?? false;
   const language = body.language || 'de';
+  const sinceDate = body.since ? parseSinceDate(body.since) : null;
+
+  // If time filter is set, use a different strategy:
+  // 1. First get candidate IDs from D1 within time range
+  // 2. Then filter by semantic similarity
+  if (sinceDate) {
+    // Get memories from time range first
+    const timeFilteredMemories = await c.env.DB.prepare(`
+      SELECT * FROM memories 
+      WHERE created_at >= ? 
+      ORDER BY created_at DESC 
+      LIMIT 50
+    `).bind(sinceDate).all<Memory>();
+
+    if (!timeFilteredMemories.results || timeFilteredMemories.results.length === 0) {
+      const noResultsMsg = language === 'de' 
+        ? 'Keine Erinnerungen in diesem Zeitraum gefunden.'
+        : 'No memories found in this time period.';
+      return c.json({ 
+        memories: [], 
+        count: 0, 
+        since: body.since,
+        since_parsed: sinceDate,
+        ...(summarize && { summary: noResultsMsg, summarized: true })
+      });
+    }
+
+    // Generate query embedding for ranking
+    const queryEmbedding = await generateEmbedding(c.env.AI, body.query);
+
+    // Get embeddings for time-filtered memories and calculate similarity
+    let results = await Promise.all(timeFilteredMemories.results.map(async (memory) => {
+      // Get vector from Vectorize by ID
+      const vectorResult = await c.env.VECTORIZE.getByIds([memory.id]);
+      if (!vectorResult || vectorResult.length === 0) {
+        return { ...memory, similarity_score: 0, tags: memory.tags ? JSON.parse(memory.tags) : [] };
+      }
+      
+      // Calculate cosine similarity
+      const memoryVector = vectorResult[0].values;
+      let dotProduct = 0;
+      let normA = 0;
+      let normB = 0;
+      for (let i = 0; i < queryEmbedding.length; i++) {
+        dotProduct += queryEmbedding[i] * memoryVector[i];
+        normA += queryEmbedding[i] * queryEmbedding[i];
+        normB += memoryVector[i] * memoryVector[i];
+      }
+      const similarity = dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+
+      return {
+        ...memory,
+        tags: memory.tags ? JSON.parse(memory.tags) : [],
+        similarity_score: similarity,
+        quality_score: memory.quality_score || 0.5,
+        composite_score: similarity
+      };
+    }));
+
+    // Sort by similarity and limit
+    results.sort((a, b) => b.similarity_score - a.similarity_score);
+    results = results.slice(0, limit);
+
+    // Update access counts
+    const returnedIds = results.map(r => r.id);
+    if (returnedIds.length > 0) {
+      const returnedPlaceholders = returnedIds.map(() => '?').join(',');
+      await c.env.DB.prepare(`
+        UPDATE memories
+        SET access_count = access_count + 1,
+            last_accessed_at = datetime('now')
+        WHERE id IN (${returnedPlaceholders})
+      `).bind(...returnedIds).run();
+    }
+
+    // AI Summarization if requested
+    let summary: string | undefined;
+    if (summarize) {
+      summary = await summarizeMemories(c.env.AI, body.query, results, language);
+    }
+
+    return c.json({
+      memories: results,
+      count: results.length,
+      query: body.query,
+      quality_boost: qualityBoost,
+      since: body.since,
+      since_parsed: sinceDate,
+      ...(summary && { summary, summarized: true })
+    });
+  }
+
+  // Standard semantic search (no time filter)
 
   // Generate query embedding
   const queryEmbedding = await generateEmbedding(c.env.AI, body.query);
@@ -380,9 +510,9 @@ app.post('/api/recall', async (c) => {
   const ids = vectorResults.matches.map(m => m.id);
   const placeholders = ids.map(() => '?').join(',');
 
-  const memories = await c.env.DB.prepare(`
-    SELECT * FROM memories WHERE id IN (${placeholders})
-  `).bind(...ids).all<Memory>();
+  const memories = await c.env.DB.prepare(
+    `SELECT * FROM memories WHERE id IN (${placeholders})`
+  ).bind(...ids).all<Memory>();
 
   // Merge vector scores with memory data
   let results = vectorResults.matches.map(match => {

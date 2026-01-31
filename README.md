@@ -324,6 +324,41 @@ curl -X POST https://your-worker.workers.dev/api/remember \
 
 **Note:** AI classification is only triggered for voice inputs. Regular API calls (MCP, direct) preserve the user-provided type and tags.
 
+## AI Summarization (Voice Recall)
+
+The `/api/recall` endpoint supports AI-powered summarization for voice interfaces:
+
+**Parameters:**
+- `summarize: true` - Enable AI summarization of search results
+- `language: "de" | "en"` - Summary language (default: German)
+- `since: string` - Time filter for memories
+
+**Time Filter (`since`) Expressions:**
+- `today` / `heute` - Since midnight today
+- `yesterday` / `gestern` - Since midnight yesterday
+- `this week` / `diese woche` - Since Monday of current week
+- `7d`, `30d` - Last N days
+- ISO date string - Specific date
+
+**Example (Siri Shortcut use case):**
+```bash
+curl -X POST https://your-worker.workers.dev/api/recall \
+  -H "Authorization: Bearer YOUR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"was habe ich heute gemacht","summarize":true,"since":"today","language":"de"}'
+
+# Response includes:
+# "summary": "Heute hast du an der Cloudflare Worker Integration gearbeitet...",
+# "summarized": true,
+# "since": "today",
+# "since_parsed": "2026-01-31T00:00:00.000Z"
+```
+
+**How it works with time filter:**
+1. Filters memories by date from D1 database (max 50 candidates)
+2. Ranks filtered memories by semantic similarity to query
+3. AI summarizes the top results in natural language
+
 ## OpenAPI Specification Compliance
 
 This implementation follows the [SHODH Memory API Specification v1.0.0](specs/README.md), ensuring compatibility across the SHODH ecosystem.
