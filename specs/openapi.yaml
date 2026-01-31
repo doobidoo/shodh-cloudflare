@@ -157,13 +157,26 @@ paths:
                   limit: 10
                   memory_types: ["Decision", "Learning"]
               quality_boosted:
-                summary: Quality-boosted search
-                value:
-                  query: "error handling patterns"
-                  limit: 10
-                  quality_boost: true
-                  quality_weight: 0.3
-      responses:
+                 summary: Quality-boosted search
+                 value:
+                   query: "error handling patterns"
+                   limit: 10
+                   quality_boost: true
+                   quality_weight: 0.3
+               time_range:
+                 summary: Search within date range
+                 value:
+                   query: "project updates"
+                   from: "last month"
+                   to: "last week"
+                   limit: 10
+               before_filter:
+                 summary: Memories before a date
+                 value:
+                   query: "bug fixes"
+                   before: "2024-12-31"
+                   limit: 20
+              responses:
         '200':
           description: Search results
           content:
@@ -859,14 +872,52 @@ components:
           default: false
           description: Enable quality-weighted ranking
         quality_weight:
-          type: number
-          format: float
-          minimum: 0
-          maximum: 1
-          default: 0.3
-          description: Weight for quality score in ranking (0.3 = 30% quality, 70% semantic)
+           type: number
+           format: float
+           minimum: 0
+           maximum: 1
+           default: 0.3
+           description: Weight for quality score in ranking (0.3 = 30% quality, 70% semantic)
+        since:
+           type: string
+           nullable: true
+           description: |
+             Lower bound temporal filter. Supports natural language (e.g., "last week",
+             "vor 2 wochen", "yesterday") and ISO dates. Alias: 'from'.
+           example: "last week"
+        from:
+           type: string
+           nullable: true
+           description: |
+             Alias for 'since' (lower bound). Takes precedence if both 'since' and 'from' are provided.
+           example: "last month"
+        before:
+           type: string
+           nullable: true
+           description: |
+             Upper bound temporal filter. Supports natural language (e.g., "yesterday",
+             "3 days ago") and ISO dates. Aliases: 'until', 'to'.
+           example: "yesterday"
+        until:
+           type: string
+           nullable: true
+           description: Alias for 'before' (upper bound)
+        to:
+           type: string
+           nullable: true
+           description: |
+             Alias for 'before'/'until' (upper bound). Takes precedence if multiple upper bounds are provided.
+        summarize:
+           type: boolean
+           default: false
+           description: Enable AI-powered summarization of results
+        language:
+           type: string
+           enum: [en, de]
+           default: de
+           description: Language for summarization and responses
 
-    RecallResponse:
+        RecallResponse:
       type: object
       properties:
         memories:

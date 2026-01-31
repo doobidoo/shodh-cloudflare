@@ -21,6 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Seit/Since expressions**: `seit gestern`, `since monday`, `seit diesem monat`
   - **Legacy support**: `7d`, `30d` (N days ago), ISO date strings
   - When `since` is set, uses time-first strategy: filter by date from D1, then rank by semantic similarity
+- **Temporal Range Filters**: Extended `/api/recall` endpoint with `before`/`until`/`to` parameters and aliases for range queries
+  - `before`/`until`/`to`: Upper bound filter (memories before/up to a date)
+  - `from`: Alias for `since` (lower bound)
+  - `to`: Alias for `before`/`until` (upper bound)
+  - Range queries: `from` + `to` for date ranges (e.g., "last month" to "last week")
+  - All 51 natural language patterns supported for both bounds
+  - Date range validation: returns 400 if lower bound > upper bound
+  - Backwards compatible: `since` parameter unchanged
+  - Alias precedence: `from` > `since` for lower bound; `to` > `until` > `before` for upper bound
 - **Temporal Query Parser Enhancement Prompt**: Added `prompts/temporal-query-parser-enhancement.md` for future implementation of full natural language temporal parsing (matching SecondBrain iOS TemporalQueryParser)
 - **AI Classification for Voice Inputs**: Automatic dictation correction, memory type classification, and tag generation for voice inputs (Siri Shortcuts, Apple Watch)
   - Uses Cloudflare Workers AI with `@cf/meta/llama-3.1-8b-instruct` model

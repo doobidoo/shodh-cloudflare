@@ -63,7 +63,13 @@ interface RecallRequest {
   quality_weight?: number;
   summarize?: boolean;
   language?: string;
-  since?: string;  // ISO date or relative: "today", "yesterday", "7d", "30d"
+  
+  // Temporal filters (all optional, support natural language + ISO dates)
+  since?: string;   // Lower bound: "last week", "2024-12-01", "7d"
+  from?: string;    // Alias for 'since' (same behavior)
+  before?: string;  // Upper bound: "yesterday", "2024-12-31", "3d"
+  until?: string;   // Alias for 'before' (same behavior)
+  to?: string;      // Alias for 'before'/'until' (same behavior)
 }
 
 interface UpdateMemoryRequest {
@@ -145,10 +151,10 @@ function generateId(): string {
   return crypto.randomUUID();
 }
 
-// Parse relative time expressions to ISO date
-function parseSinceDate(since: string): string | null {
+// Parse relative time expressions to ISO date (works for both lower and upper bounds)
+function parseTemporalExpression(expr: string): string | null {
   const now = new Date();
-  const lowerSince = since.toLowerCase().trim();
+  const lowerSince = expr.toLowerCase().trim();
   
   // Helper to get start of day (00:00:00)
   const getStartOfDay = (date: Date): Date => {
@@ -334,12 +340,17 @@ function parseSinceDate(since: string): string | null {
   }
   
   // Try parsing as ISO date
-  const parsed = new Date(since);
+  const parsed = new Date(expr);
   if (!isNaN(parsed.getTime())) {
     return parsed.toISOString();
   }
   
   return null;
+}
+
+// Backwards compatibility alias
+function parseSinceDate(since: string): string | null {
+  return parseTemporalExpression(since);
 }
 
 // AI Classification result interface
@@ -561,19 +572,55 @@ app.post('/api/recall', async (c) => {
   const qualityWeight = Math.min(Math.max(body.quality_weight ?? 0.3, 0), 1);
   const summarize = body.summarize ?? false;
   const language = body.language || 'de';
-  const sinceDate = body.since ? parseSinceDate(body.since) : null;
+
+  // Resolve temporal filter aliases
+  // Lower bound: from takes precedence over since
+  const lowerBoundExpr = body.from || body.since;
+  // Upper bound: to > until > before (first non-null wins)
+  const upperBoundExpr = body.to || body.until || body.before;
+
+  // Parse temporal expressions
+  const sinceDate = lowerBoundExpr ? parseTemporalExpression(lowerBoundExpr) : null;
+  const beforeDate = upperBoundExpr ? parseTemporalExpression(upperBoundExpr) : null;
+
+  // Validate date range
+  if (sinceDate && beforeDate) {
+    if (sinceDate > beforeDate) {
+      return c.json({
+        error: `Invalid date range: lower bound (${sinceDate}) is after upper bound (${beforeDate})`
+      }, 400);
+    }
+  }
 
   // If time filter is set, use a different strategy:
   // 1. First get candidate IDs from D1 within time range
   // 2. Then filter by semantic similarity
-  if (sinceDate) {
+  if (sinceDate || beforeDate) {
+    // Build WHERE conditions dynamically
+    const conditions = [];
+    const params: any[] = [];
+
+    if (sinceDate) {
+      conditions.push('created_at >= ?');
+      params.push(sinceDate);
+    }
+
+    if (beforeDate) {
+      conditions.push('created_at <= ?');
+      params.push(beforeDate);
+    }
+
+    const whereClause = conditions.length > 0
+      ? `WHERE ${conditions.join(' AND ')}`
+      : '';
+
     // Get memories from time range first
     const timeFilteredMemories = await c.env.DB.prepare(`
       SELECT * FROM memories 
-      WHERE created_at >= ? 
+      ${whereClause}
       ORDER BY created_at DESC 
       LIMIT 50
-    `).bind(sinceDate).all<Memory>();
+    `).bind(...params).all<Memory>();
 
     if (!timeFilteredMemories.results || timeFilteredMemories.results.length === 0) {
       const noResultsMsg = language === 'de' 
@@ -584,6 +631,11 @@ app.post('/api/recall', async (c) => {
         count: 0, 
         since: body.since,
         since_parsed: sinceDate,
+        before: body.before,
+        before_parsed: beforeDate,
+        ...(body.from && { from: body.from }),
+        ...(body.until && { until: body.until }),
+        ...(body.to && { to: body.to }),
         ...(summarize && { summary: noResultsMsg, summarized: true })
       });
     }
@@ -649,6 +701,11 @@ app.post('/api/recall', async (c) => {
       quality_boost: qualityBoost,
       since: body.since,
       since_parsed: sinceDate,
+      before: body.before,
+      before_parsed: beforeDate,
+      ...(body.from && { from: body.from }),
+      ...(body.until && { until: body.until }),
+      ...(body.to && { to: body.to }),
       ...(summary && { summary, summarized: true })
     });
   }
