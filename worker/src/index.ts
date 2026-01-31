@@ -61,6 +61,8 @@ interface RecallRequest {
   memory_types?: string[];
   quality_boost?: boolean;
   quality_weight?: number;
+  summarize?: boolean;
+  language?: string;
 }
 
 interface UpdateMemoryRequest {
@@ -213,6 +215,43 @@ async function classifyWithAI(ai: Ai, content: string): Promise<AIClassification
 }
 
 /**
+ * Summarize memory search results using Workers AI
+ */
+async function summarizeMemories(ai: Ai, query: string, memories: any[], language: string = 'de'): Promise<string> {
+  if (memories.length === 0) {
+    return language === 'de' 
+      ? 'Keine relevanten Erinnerungen gefunden.'
+      : 'No relevant memories found.';
+  }
+
+  const memoryContext = memories.map((m, i) => 
+    `[${i + 1}] (${m.memory_type || 'unknown'}, ${m.created_at?.split('T')[0] || 'undated'}): ${m.content}`
+  ).join('\n');
+
+  const systemPrompt = language === 'de'
+    ? `Du bist ein persönlicher Wissensassistent. Fasse die relevanten Erinnerungen prägnant zusammen und beantworte die Frage des Nutzers. Sei direkt und hilfreich. Antworte auf Deutsch.`
+    : `You are a personal knowledge assistant. Summarize the relevant memories concisely and answer the user's question. Be direct and helpful. Answer in English.`;
+
+  try {
+    const response = await ai.run('@cf/meta/llama-3.1-8b-instruct', {
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `Frage: "${query}"\n\nRelevante Erinnerungen:\n${memoryContext}` }
+      ],
+      max_tokens: 500,
+      temperature: 0.3
+    });
+
+    return (response as any).response || 'Zusammenfassung konnte nicht erstellt werden.';
+  } catch (error) {
+    console.error('AI summarization failed:', error);
+    return language === 'de'
+      ? 'Fehler bei der Zusammenfassung.'
+      : 'Error generating summary.';
+  }
+}
+
+/**
  * POST /api/remember - Store a new memory
  */
 app.post('/api/remember', async (c) => {
@@ -318,6 +357,8 @@ app.post('/api/recall', async (c) => {
   const limit = Math.min(body.limit || 5, 20);
   const qualityBoost = body.quality_boost ?? false;
   const qualityWeight = Math.min(Math.max(body.quality_weight ?? 0.3, 0), 1);
+  const summarize = body.summarize ?? false;
+  const language = body.language || 'de';
 
   // Generate query embedding
   const queryEmbedding = await generateEmbedding(c.env.AI, body.query);
@@ -383,11 +424,18 @@ app.post('/api/recall', async (c) => {
     `).bind(...returnedIds).run();
   }
 
+  // AI Summarization if requested
+  let summary: string | undefined;
+  if (summarize) {
+    summary = await summarizeMemories(c.env.AI, body.query, results, language);
+  }
+
   return c.json({
     memories: results,
     count: results.length,
     query: body.query,
-    quality_boost: qualityBoost
+    quality_boost: qualityBoost,
+    ...(summary && { summary, summarized: true })
   });
 });
 
