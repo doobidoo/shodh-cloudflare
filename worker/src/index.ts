@@ -100,7 +100,8 @@ app.get('/', (c) => {
   return c.json({
     service: 'shodh-cloudflare',
     status: 'healthy',
-    version: '1.1.0'
+    version: '1.1.0',
+    features: ['ai-classification']
   });
 });
 
@@ -113,7 +114,8 @@ app.get('/api/health', (c) => {
     status: 'healthy',
     version: '1.1.0',
     database: 'cloudflare-d1',
-    vector_store: 'cloudflare-vectorize'
+    vector_store: 'cloudflare-vectorize',
+    features: ['ai-classification']
   });
 });
 
@@ -140,6 +142,76 @@ function generateId(): string {
   return crypto.randomUUID();
 }
 
+// AI Classification result interface
+interface AIClassificationResult {
+  corrected_content: string;
+  type: string;
+  tags: string[];
+  ai_processed: boolean;
+}
+
+// Valid memory types for classification
+const VALID_MEMORY_TYPES = [
+  'observation', 'decision', 'learning', 'task', 
+  'discovery', 'error', 'pattern', 'context'
+];
+
+// Source types that trigger AI classification
+const AI_CLASSIFICATION_SOURCES = ['siri-shortcut', 'siri-shortcut-ai', 'watch'];
+
+/**
+ * Classify and correct content using Workers AI
+ * Triggered for voice inputs (siri-shortcut, watch) where user can't select type
+ */
+async function classifyWithAI(ai: Ai, content: string): Promise<AIClassificationResult> {
+  const systemPrompt = `Du bist ein Assistent für Sprachnotizen. Analysiere diktierten Text und:
+1. Korrigiere Diktat-/Erkennungsfehler
+2. Klassifiziere als: observation, decision, learning, task, discovery, error, pattern, context
+3. Generiere 2-4 Tags (lowercase, Bindestriche erlaubt)`;
+
+  try {
+    const response = await ai.run('@cf/meta/llama-3.1-8b-instruct', {
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `Analysiere: "${content}"` }
+      ],
+      max_tokens: 500,
+      temperature: 0.2,
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          type: 'object',
+          properties: {
+            content: { type: 'string', description: 'Korrigierter Text' },
+            type: { type: 'string', enum: VALID_MEMORY_TYPES },
+            tags: { type: 'array', items: { type: 'string' } }
+          },
+          required: ['content', 'type', 'tags']
+        }
+      }
+    });
+
+    // Parse response - JSON mode returns structured data
+    const result = (response as any).response;
+    const parsed = typeof result === 'string' ? JSON.parse(result) : result;
+    
+    return {
+      corrected_content: parsed.content || content,
+      type: VALID_MEMORY_TYPES.includes(parsed.type) ? parsed.type : 'observation',
+      tags: Array.isArray(parsed.tags) ? parsed.tags.slice(0, 5) : [],
+      ai_processed: true
+    };
+  } catch (error) {
+    console.error('AI classification failed:', error);
+    return {
+      corrected_content: content,
+      type: 'observation',
+      tags: ['voice', 'unclassified'],
+      ai_processed: false
+    };
+  }
+}
+
 /**
  * POST /api/remember - Store a new memory
  */
@@ -150,9 +222,25 @@ app.post('/api/remember', async (c) => {
     return c.json({ error: 'Content is required' }, 400);
   }
 
+  // AI Classification for voice inputs (Siri, Watch)
+  let processedContent = body.content;
+  let processedType = body.type || 'Observation';
+  let processedTags = body.tags || [];
+  let aiProcessed = false;
+
+  const sourceType = body.source_type || 'user';
+  if (AI_CLASSIFICATION_SOURCES.includes(sourceType)) {
+    const aiResult = await classifyWithAI(c.env.AI, body.content);
+    processedContent = aiResult.corrected_content;
+    processedType = aiResult.type;
+    // Merge AI tags with any provided tags
+    processedTags = [...new Set([...processedTags, ...aiResult.tags])];
+    aiProcessed = aiResult.ai_processed;
+  }
+
   const id = generateId();
-  const contentHash = await hashContent(body.content);
-  const tags = body.tags ? JSON.stringify(body.tags) : null;
+  const contentHash = await hashContent(processedContent);
+  const tags = processedTags.length > 0 ? JSON.stringify(processedTags) : null;
   const createdAt = body.created_at || new Date().toISOString();
 
   // Check for duplicate
@@ -169,7 +257,7 @@ app.post('/api/remember', async (c) => {
   }
 
   // Generate embedding
-  const embedding = await generateEmbedding(c.env.AI, body.content);
+  const embedding = await generateEmbedding(c.env.AI, processedContent);
 
   // Store in D1
   await c.env.DB.prepare(`
@@ -180,11 +268,11 @@ app.post('/api/remember', async (c) => {
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     id,
-    body.content,
+    processedContent,
     contentHash,
-    body.type || 'Observation',
+    processedType,
     tags,
-    body.source_type || 'user',
+    sourceType,
     body.emotion || null,
     body.emotional_valence || null,
     body.emotional_arousal || null,
@@ -202,7 +290,7 @@ app.post('/api/remember', async (c) => {
     values: embedding,
     metadata: {
       content_hash: contentHash,
-      memory_type: body.type || 'Observation',
+      memory_type: processedType,
       created_at: createdAt
     }
   }]);
@@ -210,7 +298,10 @@ app.post('/api/remember', async (c) => {
   return c.json({
     success: true,
     id: id,
-    content_hash: contentHash
+    content_hash: contentHash,
+    ai_processed: aiProcessed,
+    memory_type: processedType,
+    tags: processedTags
   });
 });
 

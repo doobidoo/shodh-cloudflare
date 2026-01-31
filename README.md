@@ -213,7 +213,7 @@ Compliant with [SHODH Memory API Specification](./specs/README.md) (OpenAPI 3.1)
 |----------|--------|-------------|
 | `/` | GET | Health check (basic) |
 | `/api/health` | GET | Health check (detailed) |
-| `/api/remember` | POST | Store a memory |
+| `/api/remember` | POST | Store a memory (with AI classification for voice inputs) |
 | `/api/recall` | POST | Semantic search (with quality boost) |
 | `/api/recall/by-tags` | POST | Tag-based search |
 | `/api/context` | POST | Proactive context surfacing |
@@ -289,6 +289,40 @@ For troubleshooting Worker deployment issues, see [Troubleshooting - Worker Depl
 - `Context` - Contextual information
 - `Task` - Task-related
 - `Conversation` - Auto-ingested conversations
+
+## AI Classification (Voice Inputs)
+
+When memories are submitted from voice interfaces (Siri Shortcuts, Apple Watch), the Worker automatically:
+
+1. **Corrects dictation errors** - Fixes typos, grammar, and recognition mistakes
+2. **Classifies the memory type** - Determines if it's a learning, decision, task, etc.
+3. **Generates relevant tags** - Creates 2-4 contextual tags
+
+**Triggered by `source_type`:**
+- `siri-shortcut` - iOS Shortcuts via Siri
+- `siri-shortcut-ai` - iOS Shortcuts with Apple Intelligence
+- `watch` - Apple Watch voice input
+
+**Technology:**
+- Cloudflare Workers AI
+- Model: `@cf/meta/llama-3.1-8b-instruct`
+- JSON Mode for reliable structured output
+
+**Example:**
+```bash
+curl -X POST https://your-worker.workers.dev/api/remember \
+  -H "Authorization: Bearer YOUR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"content":"ich habe gelernt dass workars ai kostenlos ist","source_type":"siri-shortcut"}'
+
+# Response includes:
+# "ai_processed": true,
+# "memory_type": "learning",
+# "tags": ["learning", "cloudflare", "workers-ai"]
+# Content corrected to: "Ich habe gelernt, dass Workers AI kostenlos ist"
+```
+
+**Note:** AI classification is only triggered for voice inputs. Regular API calls (MCP, direct) preserve the user-provided type and tags.
 
 ## OpenAPI Specification Compliance
 
