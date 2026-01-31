@@ -317,3 +317,84 @@ export function parseTemporalExpression(
 
   return null;
 }
+
+/**
+ * Extract temporal expressions from a natural language query
+ * Returns the extracted temporal expression and the cleaned query
+ * 
+ * Examples:
+ * - "was habe ich in KW eins gemacht" -> { temporal: "KW eins", cleanedQuery: "was habe ich gemacht" }
+ * - "what did I do yesterday" -> { temporal: "yesterday", cleanedQuery: "what did I do" }
+ * - "Erinnerungen von letzter Woche" -> { temporal: "letzter Woche", cleanedQuery: "Erinnerungen" }
+ */
+export function extractTemporalFromQuery(query: string): { temporal: string | null; cleanedQuery: string } {
+  // Patterns to match temporal expressions in queries
+  // Order matters: more specific patterns first
+  const patterns: Array<{ regex: RegExp; group: number }> = [
+    // German: "in KW eins/1", "in Kalenderwoche 5"
+    { regex: /\b(?:in|von|aus|für)\s+((?:kw|kalenderwoche)\s*(?:\d{1,2}|[a-zäöüß]+)(?:\s+\d{4})?)\b/i, group: 1 },
+    // German: "KW eins/1" at end or standalone
+    { regex: /\b((?:kw|kalenderwoche)\s*(?:\d{1,2}|[a-zäöüß]+)(?:\s+\d{4})?)\b/i, group: 1 },
+    
+    // English: "in week one/1", "in CW 5"
+    { regex: /\b(?:in|from|for)\s+((?:week|cw)\s*(?:\d{1,2}|[a-z-]+)(?:\s+\d{4})?)\b/i, group: 1 },
+    // English: "week one/1" at end or standalone
+    { regex: /\b((?:week|cw)\s*(?:\d{1,2}|[a-z-]+)(?:\s+\d{4})?)\b/i, group: 1 },
+    
+    // German temporal phrases with prepositions
+    { regex: /\b(?:in|von|aus|für|seit)\s+(letzt(?:e[rn]?|em)?\s+(?:woche|monat|jahr))\b/i, group: 1 },
+    { regex: /\b(?:in|von|aus|für|seit)\s+(dies(?:e[rn]?|em)?\s+(?:woche|monat|jahr))\b/i, group: 1 },
+    { regex: /\b(?:in|von|aus|für|seit)\s+((?:letzten|vergangenen)\s+\d+\s+(?:tage?n?|wochen?|monate?n?))\b/i, group: 1 },
+    { regex: /\b(vor\s+\d+\s+(?:tage?n?|wochen?|monate?n?))\b/i, group: 1 },
+    
+    // German weekdays with prepositions
+    { regex: /\b(?:am|seit|von|ab)\s+((?:letzten?\s+)?(?:montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag))\b/i, group: 1 },
+    
+    // German simple temporal words
+    { regex: /\b(heute|gestern|vorgestern)\b/i, group: 1 },
+    { regex: /\b(letzte[rn]?\s+woche)\b/i, group: 1 },
+    { regex: /\b(diese[rn]?\s+woche)\b/i, group: 1 },
+    { regex: /\b(letzte[rn]?\s+monat)\b/i, group: 1 },
+    { regex: /\b(diese[rn]?\s+monat)\b/i, group: 1 },
+    
+    // English temporal phrases with prepositions
+    { regex: /\b(?:in|from|for|since)\s+(last\s+(?:week|month|year))\b/i, group: 1 },
+    { regex: /\b(?:in|from|for|since)\s+(this\s+(?:week|month|year))\b/i, group: 1 },
+    { regex: /\b(?:in|from|for|since)\s+((?:the\s+)?(?:last|past)\s+\d+\s+(?:days?|weeks?|months?))\b/i, group: 1 },
+    { regex: /\b(\d+\s+(?:days?|weeks?|months?)\s+ago)\b/i, group: 1 },
+    
+    // English weekdays with prepositions
+    { regex: /\b(?:on|since|from)\s+((?:last\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b/i, group: 1 },
+    
+    // English simple temporal words
+    { regex: /\b(today|yesterday)\b/i, group: 1 },
+    { regex: /\b(last\s+week)\b/i, group: 1 },
+    { regex: /\b(this\s+week)\b/i, group: 1 },
+    { regex: /\b(last\s+month)\b/i, group: 1 },
+    { regex: /\b(this\s+month)\b/i, group: 1 },
+  ];
+  
+  for (const { regex, group } of patterns) {
+    const match = query.match(regex);
+    if (match && match[group]) {
+      const temporal = match[group].trim();
+      
+      // Verify this is actually a valid temporal expression
+      const parsed = parseTemporalExpression(temporal);
+      if (parsed) {
+        // Remove the matched portion from query and clean up
+        let cleanedQuery = query.replace(match[0], ' ').trim();
+        // Clean up leftover punctuation and extra spaces
+        cleanedQuery = cleanedQuery
+          .replace(/\s+/g, ' ')
+          .replace(/^\s*[,?.!]\s*/, '')
+          .replace(/\s*[,?.!]\s*$/, '')
+          .trim();
+        
+        return { temporal, cleanedQuery };
+      }
+    }
+  }
+  
+  return { temporal: null, cleanedQuery: query };
+}

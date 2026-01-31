@@ -10,7 +10,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { bearerAuth } from 'hono/bearer-auth';
-import { parseTemporalExpression } from './temporal-parser';
+import { parseTemporalExpression, extractTemporalFromQuery } from './temporal-parser';
 
 interface Env {
   DB: D1Database;
@@ -242,12 +242,18 @@ async function summarizeMemories(ai: Ai, query: string, memories: any[], languag
   ).join('\n');
 
   const systemPrompt = language === 'de'
-    ? `Du bist ein persönlicher Wissensassistent. Fasse die Erinnerungen prägnant zusammen. 
-WICHTIG: Antworte NUR basierend auf den gegebenen Erinnerungen. Erfinde KEINE zusätzlichen Informationen. 
-Wenn etwas nicht in den Erinnerungen steht, erwähne es nicht. Sei direkt und kurz.`
-    : `You are a personal knowledge assistant. Summarize the memories concisely.
-IMPORTANT: Answer ONLY based on the given memories. Do NOT invent additional information.
-If something is not in the memories, don't mention it. Be direct and brief.`;
+    ? `Du fasst persönliche Erinnerungen zusammen. Die Antwort wird vorgelesen, daher:
+- Antworte in natürlichen, gesprochenen Sätzen (keine Bullet Points, keine Listen)
+- Fasse zusammen was die Person gemacht hat, direkt und persönlich ("Du warst...", "Du hast...")
+- Kurz und knapp, max 3-4 Sätze
+- NUR Fakten aus den Erinnerungen, nichts erfinden
+- Keine Einleitungen wie "Ich habe keine spezifischen Erinnerungen" - fass einfach zusammen was da steht`
+    : `You summarize personal memories. The response will be read aloud, so:
+- Answer in natural, spoken sentences (no bullet points, no lists)
+- Summarize what the person did, direct and personal ("You visited...", "You worked on...")
+- Short and concise, max 3-4 sentences
+- ONLY facts from the memories, don't invent anything
+- No preambles like "I don't have specific memories" - just summarize what's there`;
 
   try {
     const response = await ai.run('@cf/meta/llama-3.1-8b-instruct', {
@@ -389,6 +395,18 @@ app.post('/api/recall', async (c) => {
     return c.json({ error: 'Query is required' }, 400);
   }
 
+  // Auto-extract temporal expressions from query if no explicit since/from is set
+  let effectiveQuery = body.query;
+  let extractedTemporal: string | null = null;
+  
+  if (!body.since && !body.from) {
+    const extracted = extractTemporalFromQuery(body.query);
+    if (extracted.temporal) {
+      extractedTemporal = extracted.temporal;
+      effectiveQuery = extracted.cleanedQuery;
+    }
+  }
+
   const limit = Math.min(body.limit || 5, 20);
   const qualityBoost = body.quality_boost ?? false;
   const qualityWeight = Math.min(Math.max(body.quality_weight ?? 0.3, 0), 1);
@@ -396,8 +414,8 @@ app.post('/api/recall', async (c) => {
   const language = body.language || 'de';
 
   // Resolve temporal filter aliases
-  // Lower bound: from takes precedence over since
-  const lowerBoundExpr = body.from || body.since;
+  // Lower bound: from takes precedence over since, then extracted temporal
+  const lowerBoundExpr = body.from || body.since || extractedTemporal;
   // Upper bound: to > until > before (first non-null wins)
   const upperBoundExpr = body.to || body.until || body.before;
 
@@ -481,8 +499,8 @@ app.post('/api/recall', async (c) => {
       });
     }
 
-    // Generate query embedding for ranking
-    const queryEmbedding = await generateEmbedding(c.env.AI, body.query);
+    // Generate query embedding for ranking (use cleaned query without temporal part)
+    const queryEmbedding = await generateEmbedding(c.env.AI, effectiveQuery);
 
     // Get embeddings for time-filtered memories and calculate similarity
     let results = await Promise.all(timeFilteredMemories.results.map(async (memory) => {
@@ -532,15 +550,16 @@ app.post('/api/recall', async (c) => {
     // AI Summarization if requested
     let summary: string | undefined;
     if (summarize) {
-      summary = await summarizeMemories(c.env.AI, body.query, results, language);
+      summary = await summarizeMemories(c.env.AI, effectiveQuery, results, language);
     }
 
     return c.json({
       memories: results,
       count: results.length,
       query: body.query,
+      ...(extractedTemporal && { effective_query: effectiveQuery, extracted_temporal: extractedTemporal }),
       quality_boost: qualityBoost,
-      since: body.since,
+      since: body.since || extractedTemporal,
       since_parsed: sinceDate,
       before: body.before,
       before_parsed: beforeDate,
@@ -553,8 +572,8 @@ app.post('/api/recall', async (c) => {
 
   // Standard semantic search (no time filter)
 
-  // Generate query embedding
-  const queryEmbedding = await generateEmbedding(c.env.AI, body.query);
+  // Generate query embedding (use cleaned query without temporal part)
+  const queryEmbedding = await generateEmbedding(c.env.AI, effectiveQuery);
 
   // Over-fetch if quality boost is enabled (3x candidates)
   const fetchLimit = qualityBoost ? limit * 3 : limit;
@@ -620,13 +639,14 @@ app.post('/api/recall', async (c) => {
   // AI Summarization if requested
   let summary: string | undefined;
   if (summarize) {
-    summary = await summarizeMemories(c.env.AI, body.query, results, language);
+    summary = await summarizeMemories(c.env.AI, effectiveQuery, results, language);
   }
 
   return c.json({
     memories: results,
     count: results.length,
     query: body.query,
+    ...(extractedTemporal && { effective_query: effectiveQuery, extracted_temporal: extractedTemporal }),
     quality_boost: qualityBoost,
     ...(summary && { summary, summarized: true })
   });
