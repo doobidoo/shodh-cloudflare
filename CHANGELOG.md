@@ -46,6 +46,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Use case: Create weekly summaries with KW-appropriate timestamps
   - `updated_at` remains independent (always uses current time)
   - Backwards compatible: existing API clients unaffected
+- **Comprehensive Temporal Parser Tests**: Added Vitest test suite with 71+ tests for temporal expression parser
+  - Extracted `parseTemporalExpression()` to separate module (`worker/src/temporal-parser.ts`) for testability
+  - Dependency injection via optional `now` parameter enables deterministic testing with fixed dates
+  - 71 test cases covering all 65 temporal patterns + edge cases and invalid inputs
+  - Test categories: Basic Keywords (6), Extended Patterns (13), N-Unit Patterns (15), Weekdays (6), Seit/Since (8), Legacy (3), Calendar Weeks (14), Invalid Input (5)
+  - All patterns: English & German, case-insensitive, year boundaries handled
+  - 100% code coverage target for temporal-parser.ts
+  - Run with: `npm test`, `npm run test:coverage`, `npm run test:ui`
+  - Test documentation in `worker/TESTING.md`
+  - CI/CD ready (test scripts in package.json)
 - **Temporal Query Parser Enhancement Prompt**: Added `prompts/temporal-query-parser-enhancement.md` for future implementation of full natural language temporal parsing (matching SecondBrain iOS TemporalQueryParser)
 - **AI Classification for Voice Inputs**: Automatic dictation correction, memory type classification, and tag generation for voice inputs (Siri Shortcuts, Apple Watch)
   - Uses Cloudflare Workers AI with `@cf/meta/llama-3.1-8b-instruct` model
