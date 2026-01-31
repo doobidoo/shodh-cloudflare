@@ -51,7 +51,7 @@ interface RememberRequest {
   episode_id?: string;
   sequence_number?: number;
   preceding_memory_id?: string;
-  created_at?: string;
+  created_at?: string;  // ISO 8601 timestamp (optional) - allows backdating memories
 }
 
 interface RecallRequest {
@@ -556,10 +556,28 @@ app.post('/api/remember', async (c) => {
     aiProcessed = aiResult.ai_processed;
   }
 
+  // Validate and parse created_at timestamp if provided
+  let createdAt = new Date().toISOString();
+  if (body.created_at) {
+    const parsedDate = new Date(body.created_at);
+    if (isNaN(parsedDate.getTime())) {
+      return c.json({
+        error: 'Invalid created_at format. Must be ISO 8601 (e.g., "2024-12-05T12:00:00Z")'
+      }, 400);
+    }
+    // Prevent future dates
+    if (parsedDate > new Date()) {
+      return c.json({
+        error: 'created_at cannot be in the future'
+      }, 400);
+    }
+    createdAt = body.created_at;
+  }
+
   const id = generateId();
   const contentHash = await hashContent(processedContent);
   const tags = processedTags.length > 0 ? JSON.stringify(processedTags) : null;
-  const createdAt = body.created_at || new Date().toISOString();
+  const now = new Date().toISOString();
 
   // Check for duplicate
   const existing = await c.env.DB.prepare(
@@ -599,7 +617,7 @@ app.post('/api/remember', async (c) => {
     body.sequence_number || null,
     body.preceding_memory_id || null,
     createdAt,
-    createdAt
+    now  // updated_at always uses current time, independent of created_at
   ).run();
 
   // Store in Vectorize

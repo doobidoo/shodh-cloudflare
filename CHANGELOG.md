@@ -38,6 +38,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Mixed queries: `from: "KW 1", to: "yesterday"`
   - 14 new patterns (7 German, 7 English)
   - Total: 65 temporal patterns (51 existing + 14 new)
+- **Custom Timestamp Support**: Added optional `created_at` parameter to `/api/remember` endpoint
+  - Allows backdating memories for historical data import and weekly summary consolidation
+  - ISO 8601 format validation (e.g., "2024-12-05T12:00:00Z")
+  - Cannot be in the future (future dates rejected with 400 error)
+  - Defaults to current time if not provided
+  - Use case: Create weekly summaries with KW-appropriate timestamps
+  - `updated_at` remains independent (always uses current time)
+  - Backwards compatible: existing API clients unaffected
 - **Temporal Query Parser Enhancement Prompt**: Added `prompts/temporal-query-parser-enhancement.md` for future implementation of full natural language temporal parsing (matching SecondBrain iOS TemporalQueryParser)
 - **AI Classification for Voice Inputs**: Automatic dictation correction, memory type classification, and tag generation for voice inputs (Siri Shortcuts, Apple Watch)
   - Uses Cloudflare Workers AI with `@cf/meta/llama-3.1-8b-instruct` model

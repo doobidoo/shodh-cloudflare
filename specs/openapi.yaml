@@ -92,7 +92,14 @@ paths:
                   type: Task
                   episode_id: "auth-implementation-2024"
                   sequence_number: 2
-      responses:
+              backdated:
+                summary: Memory with custom timestamp (backdating)
+                value:
+                  content: "KW 49 (2024-12-02 bis 2024-12-08): Weekly summary - Project kickoff completed"
+                  type: Context
+                  tags: ["weekly-summary", "kw49-2024"]
+                  created_at: "2024-12-05T12:00:00Z"
+              responses:
         '201':
           description: Memory created successfully
           content:
@@ -826,11 +833,21 @@ components:
           type: integer
           nullable: true
         metadata:
-          type: object
-          additionalProperties: true
-          description: Custom metadata fields
+           type: object
+           additionalProperties: true
+           description: Custom metadata fields
+        created_at:
+           type: string
+           format: date-time
+           nullable: true
+           description: |
+             Custom creation timestamp in ISO 8601 format.
+             Useful for backdating memories (e.g., historical data import, weekly summaries).
+             Defaults to current time if not provided.
+             Cannot be in the future.
+           example: "2024-12-05T12:00:00Z"
 
-    RememberResponse:
+        RememberResponse:
       type: object
       properties:
         success:
