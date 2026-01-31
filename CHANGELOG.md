@@ -13,10 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Returns natural language summary of search results
   - Supports `language` parameter (`de`/`en`) for response language
   - Ideal for voice interfaces (Siri Shortcuts) to get spoken summaries
-- **Time-Based Memory Filtering**: New `since` parameter for `/api/recall` endpoint
-  - Supports relative expressions: `today`, `yesterday`, `this week`, `heute`, `gestern`, `diese woche`
-  - Supports shorthand: `7d`, `30d` (N days ago)
-  - Supports ISO date strings
+- **Enhanced Temporal Query Parser**: Significantly expanded `since` parameter support in `/api/recall` endpoint
+  - **Basic keywords**: `today`/`heute`, `yesterday`/`gestern`, `this week`/`diese woche`
+  - **Extended fixed patterns**: `last week`/`letzte woche`, `this month`/`diesen monat`, `last month`/`letzten monat`, `this year`/`dieses jahr`, `last year`/`letztes jahr`
+  - **Flexible N-unit patterns**: `last N days`, `past N weeks`, `letzten N Monate`, etc.
+  - **Weekday references**: `monday`/`montag`, `last monday`/`letzten montag`
+  - **Seit/Since expressions**: `seit gestern`, `since monday`, `seit diesem monat`
+  - **Legacy support**: `7d`, `30d` (N days ago), ISO date strings
   - When `since` is set, uses time-first strategy: filter by date from D1, then rank by semantic similarity
 - **Temporal Query Parser Enhancement Prompt**: Added `prompts/temporal-query-parser-enhancement.md` for future implementation of full natural language temporal parsing (matching SecondBrain iOS TemporalQueryParser)
 - **AI Classification for Voice Inputs**: Automatic dictation correction, memory type classification, and tag generation for voice inputs (Siri Shortcuts, Apple Watch)
