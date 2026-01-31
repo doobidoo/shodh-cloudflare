@@ -30,6 +30,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Date range validation: returns 400 if lower bound > upper bound
   - Backwards compatible: `since` parameter unchanged
   - Alias precedence: `from` > `since` for lower bound; `to` > `until` > `before` for upper bound
+- **Calendar Week (KW) Support**: Extended temporal query parser with calendar week patterns
+  - German: `KW 49`, `KW49`, `KW 1 2024`, `Kalenderwoche 3`
+  - English: `week 52`, `week52`, `week 1 2024`, `CW 49`
+  - ISO 8601 standard (week starts Monday, week 1 has first Thursday)
+  - Week range queries: `from: "KW 1 2024", to: "KW 5 2024"`
+  - Mixed queries: `from: "KW 1", to: "yesterday"`
+  - 14 new patterns (7 German, 7 English)
+  - Total: 65 temporal patterns (51 existing + 14 new)
 - **Temporal Query Parser Enhancement Prompt**: Added `prompts/temporal-query-parser-enhancement.md` for future implementation of full natural language temporal parsing (matching SecondBrain iOS TemporalQueryParser)
 - **AI Classification for Voice Inputs**: Automatic dictation correction, memory type classification, and tag generation for voice inputs (Siri Shortcuts, Apple Watch)
   - Uses Cloudflare Workers AI with `@cf/meta/llama-3.1-8b-instruct` model

@@ -151,6 +151,35 @@ function generateId(): string {
   return crypto.randomUUID();
 }
 
+// Helper to get ISO week number from a date
+function getISOWeek(date: Date): number {
+  const target = new Date(date.valueOf());
+  const dayNumber = (date.getDay() + 6) % 7;
+  target.setDate(target.getDate() - dayNumber + 3);
+  const jan4 = new Date(target.getFullYear(), 0, 4);
+  const dayDiff = (target.valueOf() - jan4.valueOf()) / 86400000;
+  return 1 + Math.floor(dayDiff / 7);
+}
+
+// Helper to get Monday of ISO week N in year Y
+function getMondayOfWeekNum(year: number, week: number): Date {
+  const jan4 = new Date(year, 0, 4);
+  const jan4DayOfWeek = (jan4.getDay() + 6) % 7; // Monday=0
+  const week1Monday = new Date(year, 0, 4 - jan4DayOfWeek);
+  const targetMonday = new Date(week1Monday);
+  targetMonday.setDate(week1Monday.getDate() + (week - 1) * 7);
+  return new Date(targetMonday.getFullYear(), targetMonday.getMonth(), targetMonday.getDate());
+}
+
+// Helper to get Sunday (last day) of ISO week N in year Y
+function getSundayOfWeek(year: number, week: number): Date {
+  const monday = getMondayOfWeekNum(year, week);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  sunday.setHours(23, 59, 59, 999);
+  return sunday;
+}
+
 // Parse relative time expressions to ISO date (works for both lower and upper bounds)
 function parseTemporalExpression(expr: string): string | null {
   const now = new Date();
@@ -337,6 +366,43 @@ function parseTemporalExpression(expr: string): string | null {
   // "seit diesem monat" / "since this month"
   if (lowerSince === 'seit diesem monat' || lowerSince === 'since this month') {
     return getFirstOfMonth(now).toISOString();
+  }
+  
+  // Calendar Week patterns (ISO 8601)
+  // German: "KW 49", "KW49", "KW 1 2024", "Kalenderwoche 3"
+  let kwMatch = lowerSince.match(/^(?:kw|kalenderwoche)\s*(\d{1,2})(?:\s+(\d{4}))?$/i);
+  if (kwMatch) {
+    const weekNum = parseInt(kwMatch[1]);
+    const year = kwMatch[2] ? parseInt(kwMatch[2]) : now.getFullYear();
+
+    // Validate week number (1-53)
+    if (weekNum < 1 || weekNum > 53) {
+      return null; // Invalid week number
+    }
+
+    const monday = getMondayOfWeekNum(year, weekNum);
+    const sunday = getSundayOfWeek(year, weekNum);
+
+    // Return range as pipe-separated tuple
+    return `${monday.toISOString()}|${sunday.toISOString()}`;
+  }
+
+  // English: "week 52", "week52", "week 1 2024", "CW 49"
+  let weekMatch = lowerSince.match(/^(?:week|cw)\s*(\d{1,2})(?:\s+(\d{4}))?$/i);
+  if (weekMatch) {
+    const weekNum = parseInt(weekMatch[1]);
+    const year = weekMatch[2] ? parseInt(weekMatch[2]) : now.getFullYear();
+
+    // Validate week number (1-53)
+    if (weekNum < 1 || weekNum > 53) {
+      return null; // Invalid week number
+    }
+
+    const monday = getMondayOfWeekNum(year, weekNum);
+    const sunday = getSundayOfWeek(year, weekNum);
+
+    // Return range as pipe-separated tuple
+    return `${monday.toISOString()}|${sunday.toISOString()}`;
   }
   
   // Try parsing as ISO date
@@ -580,8 +646,27 @@ app.post('/api/recall', async (c) => {
   const upperBoundExpr = body.to || body.until || body.before;
 
   // Parse temporal expressions
-  const sinceDate = lowerBoundExpr ? parseTemporalExpression(lowerBoundExpr) : null;
-  const beforeDate = upperBoundExpr ? parseTemporalExpression(upperBoundExpr) : null;
+  let sinceDate = lowerBoundExpr ? parseTemporalExpression(lowerBoundExpr) : null;
+  let beforeDate = upperBoundExpr ? parseTemporalExpression(upperBoundExpr) : null;
+
+  // Handle calendar week tuples (format: "START|END")
+  if (sinceDate && sinceDate.includes('|')) {
+    const [start, end] = sinceDate.split('|');
+    sinceDate = start;
+    // If no explicit upper bound, use week end
+    if (!beforeDate) {
+      beforeDate = end;
+    }
+  }
+
+  if (beforeDate && beforeDate.includes('|')) {
+    const [start, end] = beforeDate.split('|');
+    beforeDate = end;
+    // If no explicit lower bound, use week start
+    if (!sinceDate) {
+      sinceDate = start;
+    }
+  }
 
   // Validate date range
   if (sinceDate && beforeDate) {
