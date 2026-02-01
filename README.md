@@ -1,5 +1,7 @@
 # SHODH on Cloudflare
 
+**Version 2.0** - AI-Powered Memory with Natural Language Temporal Queries
+
 ## Your AI's memory shouldn't disappear when you switch devices.
 
 You're on your laptop working with Claude. It remembers your project structure, coding style, and decisions. Then you switch to your phone—and it's all gone. You're re-explaining the same context. **Again.**
@@ -39,6 +41,30 @@ You're on your laptop working with Claude. It remembers your project structure, 
 | ❌ Context lost when switching devices | ✅ Same context on laptop, phone, tablet |
 | ❌ Re-explain project after every restart | ✅ AI already knows your project structure |
 | ❌ Memories stuck on one machine | ✅ Global sync, <50ms anywhere |
+
+## What's New in v2.0
+
+🎯 **Natural Language Temporal Queries** - 65+ temporal expressions in English & German
+- "last week", "letzte Woche", "KW 49", "seit Montag"
+- Voice dictation support: "KW eins" (number words)
+- Week ranges: "from KW 1 to KW 5"
+
+🤖 **AI Summarization** - Get spoken summaries of your memories
+- Perfect for Siri Shortcuts & Apple Watch
+- Bilingual support (German/English)
+
+📅 **Calendar Week (KW) Support** - ISO 8601 compliant
+- German: "KW 49", "Kalenderwoche 3"
+- English: "week 52", "CW 49"
+
+🎙️ **Voice Input AI Classification** - Automatic cleanup & tagging
+- Corrects dictation errors
+- Smart memory type detection
+- Auto-generates relevant tags
+
+🔧 **Custom Timestamps** - Backdate memories for historical imports
+
+🔌 **Gemini Client Support** - Works with Claude & Gemini models
 
 ## How It Works
 
@@ -213,8 +239,8 @@ Compliant with [SHODH Memory API Specification](./specs/README.md) (OpenAPI 3.1)
 |----------|--------|-------------|
 | `/` | GET | Health check (basic) |
 | `/api/health` | GET | Health check (detailed) |
-| `/api/remember` | POST | Store a memory (with AI classification for voice inputs) |
-| `/api/recall` | POST | Semantic search (with quality boost) |
+| `/api/remember` | POST | Store a memory (with AI classification for voice inputs, custom timestamps) |
+| `/api/recall` | POST | Semantic search (quality boost, 65+ temporal patterns, range queries, AI summarization) |
 | `/api/recall/by-tags` | POST | Tag-based search |
 | `/api/context` | POST | Proactive context surfacing |
 | `/api/memories` | GET | List all memories |
@@ -233,8 +259,8 @@ Once configured, these tools are available in Claude:
 
 | Tool | Description |
 |------|-------------|
-| `remember` | Store a memory with metadata |
-| `recall` | Semantic search (supports quality_boost) |
+| `remember` | Store a memory with metadata (supports custom timestamps) |
+| `recall` | Semantic search (quality boost, temporal range queries with 65+ natural language patterns) |
 | `recall_by_tags` | Tag-based search |
 | `proactive_context` | Surface relevant memories |
 | `list_memories` | List all memories |
@@ -324,6 +350,55 @@ curl -X POST https://your-worker.workers.dev/api/remember \
 
 **Note:** AI classification is only triggered for voice inputs. Regular API calls (MCP, direct) preserve the user-provided type and tags.
 
+## Temporal Query Expressions
+
+V2.0 introduces **65+ natural language patterns** for querying memories by time:
+
+### Pattern Categories
+
+**Basic Keywords** (English & German):
+- `today` / `heute`
+- `yesterday` / `gestern`
+- `this week` / `diese woche`
+
+**Extended Patterns**:
+- `last week` / `letzte woche`
+- `this month` / `diesen monat`
+- `last year` / `letztes jahr`
+
+**Flexible N-Unit Patterns**:
+- `last 7 days` / `letzten 7 Tage`
+- `past 3 weeks` / `letzten 3 Wochen`
+- `vor 2 Monaten`
+
+**Weekday References**:
+- `monday` / `montag` (most recent)
+- `last friday` / `letzten freitag`
+- `seit dienstag`
+
+**Calendar Weeks (ISO 8601)**:
+- German: `KW 49`, `KW 1 2024`, `Kalenderwoche 3`
+- English: `week 52`, `week 1 2024`, `CW 49`
+- Voice dictation: `KW eins`, `week five`
+
+**Range Queries**:
+```bash
+# Week ranges
+{"from": "KW 1 2024", "to": "KW 5 2024"}
+
+# Mixed ranges
+{"from": "last month", "to": "yesterday"}
+
+# Alias support
+{"since": "monday", "until": "today"}
+```
+
+**Legacy Formats**:
+- `7d`, `30d` (N days ago)
+- ISO date strings
+
+All patterns are **case-insensitive** and work in both **English and German**.
+
 ## AI Summarization (Voice Recall)
 
 The `/api/recall` endpoint supports AI-powered summarization for voice interfaces:
@@ -331,14 +406,9 @@ The `/api/recall` endpoint supports AI-powered summarization for voice interface
 **Parameters:**
 - `summarize: true` - Enable AI summarization of search results
 - `language: "de" | "en"` - Summary language (default: German)
-- `since: string` - Time filter for memories
-
-**Time Filter (`since`) Expressions:**
-- `today` / `heute` - Since midnight today
-- `yesterday` / `gestern` - Since midnight yesterday
-- `this week` / `diese woche` - Since Monday of current week
-- `7d`, `30d` - Last N days
-- ISO date string - Specific date
+- `since: string` - Time filter (65+ natural language patterns supported)
+- `from` / `to` - Range queries with temporal expressions
+- `before` / `until` - Upper bound filters
 
 **Example (Siri Shortcut use case):**
 ```bash
@@ -385,6 +455,35 @@ All unified fields from the specification are supported:
 - **Quality & Access**: `quality_score`, `access_count`, `last_accessed_at`
 
 For complete API documentation, see [specs/openapi.yaml](specs/openapi.yaml).
+
+## Migration from v1.x to v2.0
+
+### Breaking Changes
+**None** - v2.0 is fully backwards compatible with v1.x API calls.
+
+### Recommended Updates
+
+1. **MCP Bridge** - Update dependencies:
+   ```bash
+   cd mcp-bridge
+   npm install
+   ```
+   This upgrades MCP SDK from 1.0.0 to >=1.8.0 for tool annotations support.
+
+2. **New Features** (opt-in):
+   - Temporal queries: Use enhanced `since` parameter with natural language
+   - AI summarization: Add `summarize: true` to `/api/recall` calls
+   - Custom timestamps: Specify `created_at` when creating memories
+   - Range queries: Use `from`/`to` for date ranges
+
+3. **No Worker Redeployment Required** - API is backwards compatible
+
+### What Users Gain
+
+- **Richer temporal queries**: "last week" instead of calculating dates
+- **Voice-friendly**: Natural language works with Siri/dictation
+- **Better voice recall**: AI summaries for spoken responses
+- **Historical data**: Backdate memories with custom timestamps
 
 ## Acknowledgments
 
