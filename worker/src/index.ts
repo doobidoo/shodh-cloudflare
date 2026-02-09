@@ -1607,4 +1607,123 @@ app.post('/api/consolidate', async (c) => {
   });
 });
 
+/**
+ * POST /api/chat - Stream AI chat response with memory context
+ *
+ * Request body:
+ * {
+ *   "query": "User question with system instructions",
+ *   "context": ["formatted memory 1", "formatted memory 2", ...],
+ *   "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+ *   "stream": true
+ * }
+ *
+ * Response: Server-Sent Events (SSE) stream
+ * data: {"delta": "chunk of text", "done": false}
+ * ...
+ * data: {"delta": "", "done": true}
+ */
+app.post('/api/chat', async (c) => {
+  const body = await c.req.json<{
+    query: string;
+    context: string[];
+    model?: string;
+    stream?: boolean;
+  }>();
+
+  if (!body.query) {
+    return c.json({ error: 'query is required' }, 400);
+  }
+
+  const model = body.model || '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+  const stream = body.stream !== false; // Default: true
+
+  // Build prompt with context
+  const contextSection = body.context && body.context.length > 0
+    ? `\n\nRelevant Memories:\n${body.context.join('\n\n')}`
+    : '';
+
+  const fullPrompt = `${body.query}${contextSection}`;
+
+  try {
+    // Stream AI response using Workers AI
+    const aiStream = await c.env.AI.run(model, {
+      messages: [
+        { role: 'user', content: fullPrompt }
+      ],
+      stream: stream
+    });
+
+    if (!stream) {
+      // Non-streaming response
+      return c.json({
+        response: (aiStream as any).response || '',
+        done: true
+      });
+    }
+
+    // Set up SSE headers
+    c.header('Content-Type', 'text/event-stream');
+    c.header('Cache-Control', 'no-cache');
+    c.header('Connection', 'keep-alive');
+
+    // Create a ReadableStream from the AI response
+    const responseStream = new ReadableStream({
+      async start(controller) {
+        const encoder = new TextEncoder();
+
+        try {
+          // Type the stream correctly
+          const stream = aiStream as ReadableStream;
+          const reader = stream.getReader();
+
+          while (true) {
+            const { done, value } = await reader.read();
+
+            if (done) {
+              // Send final done message
+              const finalChunk = JSON.stringify({ delta: '', done: true });
+              controller.enqueue(encoder.encode(`data: ${finalChunk}\n\n`));
+              controller.close();
+              break;
+            }
+
+            // Extract text from the chunk
+            // Workers AI stream format: { response: string }
+            const text = (value as any).response || '';
+
+            if (text) {
+              const chunk = JSON.stringify({ delta: text, done: false });
+              controller.enqueue(encoder.encode(`data: ${chunk}\n\n`));
+            }
+          }
+        } catch (error) {
+          console.error('Streaming error:', error);
+          const errorChunk = JSON.stringify({
+            delta: '',
+            done: true,
+            error: 'Streaming failed'
+          });
+          controller.enqueue(encoder.encode(`data: ${errorChunk}\n\n`));
+          controller.close();
+        }
+      }
+    });
+
+    return new Response(responseStream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
+      }
+    });
+  } catch (error) {
+    console.error('AI chat error:', error);
+    return c.json({
+      error: 'Failed to generate AI response',
+      details: error instanceof Error ? error.message : String(error)
+    }, 500);
+  }
+});
+
 export default app;
