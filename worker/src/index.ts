@@ -55,6 +55,10 @@ interface RememberRequest {
   created_at?: string;  // ISO 8601 timestamp (optional) - allows backdating memories
 }
 
+interface BatchRememberRequest {
+  memories: RememberRequest[];
+}
+
 interface RecallRequest {
   query: string;
   limit?: number;
@@ -110,8 +114,8 @@ app.get('/', (c) => {
   return c.json({
     service: 'shodh-cloudflare',
     status: 'healthy',
-    version: '1.1.0',
-    features: ['ai-classification']
+    version: '2.1.0',
+    features: ['ai-classification', 'batch-storage', 'prefix-id-resolution', 'memory-reinforcement']
   });
 });
 
@@ -122,10 +126,10 @@ app.get('/api/health', (c) => {
   return c.json({
     service: 'shodh-cloudflare',
     status: 'healthy',
-    version: '1.1.0',
+    version: '2.1.0',
     database: 'cloudflare-d1',
     vector_store: 'cloudflare-vectorize',
-    features: ['ai-classification']
+    features: ['ai-classification', 'batch-storage', 'prefix-id-resolution', 'memory-reinforcement']
   });
 });
 
@@ -150,6 +154,37 @@ async function generateEmbedding(ai: Ai, text: string): Promise<number[]> {
 // Generate UUID
 function generateId(): string {
   return crypto.randomUUID();
+}
+
+/**
+ * Resolve memory ID from prefix (8+ characters)
+ * Returns full ID if unique match found, null if no match, throws if ambiguous
+ */
+async function resolveMemoryId(db: D1Database, idOrPrefix: string): Promise<string | null> {
+  // If already a full UUID (36 chars with dashes), return as-is
+  if (idOrPrefix.length === 36 && idOrPrefix.includes('-')) {
+    return idOrPrefix;
+  }
+
+  // Require at least 8 characters for prefix matching
+  if (idOrPrefix.length < 8) {
+    return null;
+  }
+
+  // Query for matching IDs (limit 2 to detect ambiguity)
+  const matches = await db.prepare(
+    'SELECT id FROM memories WHERE id LIKE ? LIMIT 2'
+  ).bind(`${idOrPrefix}%`).all<{ id: string }>();
+
+  if (!matches.results || matches.results.length === 0) {
+    return null; // No match
+  }
+
+  if (matches.results.length > 1) {
+    throw new Error(`Ambiguous ID prefix "${idOrPrefix}" matches multiple memories`);
+  }
+
+  return matches.results[0].id;
 }
 
 // Backwards compatibility alias (old name for parseTemporalExpression)
@@ -382,6 +417,158 @@ app.post('/api/remember', async (c) => {
     ai_processed: aiProcessed,
     memory_type: processedType,
     tags: processedTags
+  });
+});
+
+/**
+ * POST /api/remember/batch - Batch store memories
+ */
+app.post('/api/remember/batch', async (c) => {
+  const body = await c.req.json<BatchRememberRequest>();
+
+  if (!body.memories || !Array.isArray(body.memories) || body.memories.length === 0) {
+    return c.json({ error: 'memories array is required and must not be empty' }, 400);
+  }
+
+  // Limit batch size to prevent timeouts
+  const MAX_BATCH_SIZE = 50;
+  if (body.memories.length > MAX_BATCH_SIZE) {
+    return c.json({
+      error: `Batch size exceeds maximum of ${MAX_BATCH_SIZE} memories`
+    }, 400);
+  }
+
+  const results = [];
+  const errors = [];
+
+  // Process each memory
+  for (let i = 0; i < body.memories.length; i++) {
+    const memoryRequest = body.memories[i];
+
+    if (!memoryRequest.content) {
+      errors.push({ index: i, error: 'Content is required' });
+      continue;
+    }
+
+    try {
+      // AI Classification for voice inputs (same logic as single remember)
+      let processedContent = memoryRequest.content;
+      let processedType = memoryRequest.type || 'Observation';
+      let processedTags = memoryRequest.tags || [];
+      let aiProcessed = false;
+
+      const sourceType = memoryRequest.source_type || 'user';
+      if (AI_CLASSIFICATION_SOURCES.includes(sourceType)) {
+        const aiResult = await classifyWithAI(c.env.AI, memoryRequest.content);
+        processedContent = aiResult.corrected_content;
+        processedType = aiResult.type;
+        processedTags = [...new Set([...processedTags, ...aiResult.tags])];
+        aiProcessed = aiResult.ai_processed;
+      }
+
+      // Validate and parse created_at
+      let createdAt = new Date().toISOString();
+      if (memoryRequest.created_at) {
+        const parsedDate = new Date(memoryRequest.created_at);
+        if (isNaN(parsedDate.getTime())) {
+          errors.push({
+            index: i,
+            error: 'Invalid created_at format. Must be ISO 8601'
+          });
+          continue;
+        }
+        if (parsedDate > new Date()) {
+          errors.push({
+            index: i,
+            error: 'created_at cannot be in the future'
+          });
+          continue;
+        }
+        createdAt = memoryRequest.created_at;
+      }
+
+      const id = generateId();
+      const contentHash = await hashContent(processedContent);
+      const tags = processedTags.length > 0 ? JSON.stringify(processedTags) : null;
+      const now = new Date().toISOString();
+
+      // Check for duplicate
+      const existing = await c.env.DB.prepare(
+        'SELECT id FROM memories WHERE content_hash = ?'
+      ).bind(contentHash).first();
+
+      if (existing) {
+        errors.push({
+          index: i,
+          error: 'Memory already exists',
+          existing_id: existing.id
+        });
+        continue;
+      }
+
+      // Generate embedding
+      const embedding = await generateEmbedding(c.env.AI, processedContent);
+
+      // Store in D1
+      await c.env.DB.prepare(`
+        INSERT INTO memories (
+          id, content, content_hash, memory_type, tags, source_type,
+          emotion, emotional_valence, emotional_arousal, credibility,
+          episode_id, sequence_number, preceding_memory_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        id,
+        processedContent,
+        contentHash,
+        processedType,
+        tags,
+        sourceType,
+        memoryRequest.emotion || null,
+        memoryRequest.emotional_valence || null,
+        memoryRequest.emotional_arousal || null,
+        memoryRequest.credibility || 1.0,
+        memoryRequest.episode_id || null,
+        memoryRequest.sequence_number || null,
+        memoryRequest.preceding_memory_id || null,
+        createdAt,
+        now
+      ).run();
+
+      // Store in Vectorize
+      await c.env.VECTORIZE.upsert([{
+        id: id,
+        values: embedding,
+        metadata: {
+          content_hash: contentHash,
+          memory_type: processedType,
+          created_at: createdAt
+        }
+      }]);
+
+      results.push({
+        success: true,
+        index: i,
+        id: id,
+        content_hash: contentHash,
+        ai_processed: aiProcessed,
+        memory_type: processedType,
+        tags: processedTags
+      });
+    } catch (error) {
+      errors.push({
+        index: i,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
+  return c.json({
+    success: errors.length === 0,
+    total: body.memories.length,
+    created: results.length,
+    failed: errors.length,
+    results: results,
+    ...(errors.length > 0 && { errors: errors })
   });
 });
 
@@ -777,40 +964,61 @@ app.get('/api/memories', async (c) => {
 });
 
 /**
- * GET /api/memories/:id - Get a specific memory
+ * GET /api/memories/:id - Get a specific memory (supports ID prefix)
  */
 app.get('/api/memories/:id', async (c) => {
-  const id = c.req.param('id');
+  const idOrPrefix = c.req.param('id');
 
-  const memory = await c.env.DB.prepare(
-    'SELECT * FROM memories WHERE id = ?'
-  ).bind(id).first<Memory>();
+  try {
+    const resolvedId = await resolveMemoryId(c.env.DB, idOrPrefix);
 
-  if (!memory) {
-    return c.json({ error: 'Memory not found' }, 404);
+    if (!resolvedId) {
+      return c.json({ error: 'Memory not found' }, 404);
+    }
+
+    const memory = await c.env.DB.prepare(
+      'SELECT * FROM memories WHERE id = ?'
+    ).bind(resolvedId).first<Memory>();
+
+    if (!memory) {
+      return c.json({ error: 'Memory not found' }, 404);
+    }
+
+    return c.json({
+      ...memory,
+      tags: memory.tags ? JSON.parse(memory.tags) : [],
+      ...(idOrPrefix !== resolvedId && { resolved_from: idOrPrefix })
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('Ambiguous')) {
+      return c.json({ error: error.message }, 409);
+    }
+    throw error;
   }
-
-  return c.json({
-    ...memory,
-    tags: memory.tags ? JSON.parse(memory.tags) : []
-  });
 });
 
 /**
- * PATCH /api/memories/:id - Update memory metadata
+ * PATCH /api/memories/:id - Update memory metadata (supports ID prefix)
  */
 app.patch('/api/memories/:id', async (c) => {
-  const id = c.req.param('id');
+  const idOrPrefix = c.req.param('id');
   const body = await c.req.json<UpdateMemoryRequest>();
 
-  // Check if memory exists
-  const existing = await c.env.DB.prepare(
-    'SELECT id FROM memories WHERE id = ?'
-  ).bind(id).first();
+  try {
+    const id = await resolveMemoryId(c.env.DB, idOrPrefix);
 
-  if (!existing) {
-    return c.json({ error: 'Memory not found' }, 404);
-  }
+    if (!id) {
+      return c.json({ error: 'Memory not found' }, 404);
+    }
+
+    // Check if memory exists
+    const existing = await c.env.DB.prepare(
+      'SELECT id FROM memories WHERE id = ?'
+    ).bind(id).first();
+
+    if (!existing) {
+      return c.json({ error: 'Memory not found' }, 404);
+    }
 
   // Build dynamic update query
   const updates: string[] = [];
@@ -858,43 +1066,114 @@ app.patch('/api/memories/:id', async (c) => {
     WHERE id = ?
   `).bind(...values).run();
 
-  // Return updated memory
-  const updated = await c.env.DB.prepare(
-    'SELECT * FROM memories WHERE id = ?'
-  ).bind(id).first<Memory>();
+    // Return updated memory
+    const updated = await c.env.DB.prepare(
+      'SELECT * FROM memories WHERE id = ?'
+    ).bind(id).first<Memory>();
 
-  return c.json({
-    success: true,
-    memory: {
-      ...updated,
-      tags: updated?.tags ? JSON.parse(updated.tags) : []
+    return c.json({
+      success: true,
+      memory: {
+        ...updated,
+        tags: updated?.tags ? JSON.parse(updated.tags) : [],
+        ...(idOrPrefix !== id && { resolved_from: idOrPrefix })
+      }
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('Ambiguous')) {
+      return c.json({ error: error.message }, 409);
     }
-  });
+    throw error;
+  }
 });
 
 /**
- * DELETE /api/forget/:id - Delete a memory
+ * POST /api/memories/:id/reinforce - Reinforce a memory (increase quality score)
+ */
+app.post('/api/memories/:id/reinforce', async (c) => {
+  const idOrPrefix = c.req.param('id');
+
+  try {
+    const id = await resolveMemoryId(c.env.DB, idOrPrefix);
+
+    if (!id) {
+      return c.json({ error: 'Memory not found' }, 404);
+    }
+
+    // Get current memory state
+    const memory = await c.env.DB.prepare(
+      'SELECT id, quality_score FROM memories WHERE id = ?'
+    ).bind(id).first<{ id: string; quality_score: number }>();
+
+    if (!memory) {
+      return c.json({ error: 'Memory not found' }, 404);
+    }
+
+    // Calculate new quality score (increment by 0.1, max 1.0)
+    const currentQuality = memory.quality_score || 0.5;
+    const newQuality = Math.min(currentQuality + 0.1, 1.0);
+
+    // Update quality score
+    await c.env.DB.prepare(`
+      UPDATE memories
+      SET quality_score = ?,
+          updated_at = datetime('now')
+      WHERE id = ?
+    `).bind(newQuality, id).run();
+
+    return c.json({
+      success: true,
+      id: id,
+      previous_quality: currentQuality,
+      new_quality: newQuality,
+      ...(idOrPrefix !== id && { resolved_from: idOrPrefix })
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('Ambiguous')) {
+      return c.json({ error: error.message }, 409);
+    }
+    throw error;
+  }
+});
+
+/**
+ * DELETE /api/forget/:id - Delete a memory (supports ID prefix)
  */
 app.delete('/api/forget/:id', async (c) => {
-  const id = c.req.param('id');
+  const idOrPrefix = c.req.param('id');
 
-  // Delete from D1
-  const result = await c.env.DB.prepare(
-    'DELETE FROM memories WHERE id = ?'
-  ).bind(id).run();
+  try {
+    const id = await resolveMemoryId(c.env.DB, idOrPrefix);
 
-  // Delete from Vectorize
-  await c.env.VECTORIZE.deleteByIds([id]);
+    if (!id) {
+      return c.json({ error: 'Memory not found' }, 404);
+    }
 
-  // Delete related edges
-  await c.env.DB.prepare(
-    'DELETE FROM memory_edges WHERE source_id = ? OR target_id = ?'
-  ).bind(id, id).run();
+    // Delete from D1
+    const result = await c.env.DB.prepare(
+      'DELETE FROM memories WHERE id = ?'
+    ).bind(id).run();
 
-  return c.json({
-    success: true,
-    deleted: result.meta.changes > 0
-  });
+    // Delete from Vectorize
+    await c.env.VECTORIZE.deleteByIds([id]);
+
+    // Delete related edges
+    await c.env.DB.prepare(
+      'DELETE FROM memory_edges WHERE source_id = ? OR target_id = ?'
+    ).bind(id, id).run();
+
+    return c.json({
+      success: true,
+      deleted: result.meta.changes > 0,
+      id: id,
+      ...(idOrPrefix !== id && { resolved_from: idOrPrefix })
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('Ambiguous')) {
+      return c.json({ error: error.message }, 409);
+    }
+    throw error;
+  }
 });
 
 /**

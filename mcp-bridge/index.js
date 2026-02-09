@@ -50,7 +50,7 @@ async function apiRequest(endpoint, method = "GET", body = null) {
 const server = new Server(
   {
     name: "shodh-cloudflare",
-    version: "1.1.1",
+    version: "1.2.0",
   },
   {
     capabilities: {
@@ -384,6 +384,67 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           destructiveHint: true,
         },
       },
+      {
+        name: "batch_remember",
+        description: "Store multiple memories in a single batch. Efficient for bulk imports (journal entries, conversation logs, etc.). Maximum 50 memories per batch.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            memories: {
+              type: "array",
+              description: "Array of memory objects to store",
+              items: {
+                type: "object",
+                properties: {
+                  content: {
+                    type: "string",
+                    description: "The content to remember",
+                  },
+                  type: {
+                    type: "string",
+                    enum: ["Observation", "Decision", "Learning", "Error", "Discovery", "Pattern", "Context", "Task"],
+                    default: "Observation",
+                  },
+                  tags: {
+                    type: "array",
+                    items: { type: "string" },
+                  },
+                  source_type: {
+                    type: "string",
+                    enum: ["user", "system", "api", "file", "web", "ai_generated", "inferred"],
+                  },
+                  created_at: {
+                    type: "string",
+                    description: "Optional ISO 8601 timestamp for backdating",
+                  },
+                },
+                required: ["content"],
+              },
+            },
+          },
+          required: ["memories"],
+        },
+        annotations: {
+          title: "Batch Store Memories",
+        },
+      },
+      {
+        name: "reinforce_memory",
+        description: "Reinforce a memory by increasing its quality score. Use this to mark important memories that should be retained and prioritized in future searches.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            id: {
+              type: "string",
+              description: "Memory ID or prefix (minimum 8 characters)",
+            },
+          },
+          required: ["id"],
+        },
+        annotations: {
+          title: "Reinforce Memory",
+        },
+      },
     ],
   };
 });
@@ -521,6 +582,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           decay_rate: args.decay_rate,
           quality_threshold: args.quality_threshold,
         });
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "batch_remember": {
+        const result = await apiRequest("/api/remember/batch", "POST", {
+          memories: args.memories,
+        });
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "reinforce_memory": {
+        const result = await apiRequest(`/api/memories/${args.id}/reinforce`, "POST");
         return {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };

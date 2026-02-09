@@ -244,13 +244,15 @@ Compliant with [SHODH Memory API Specification](./specs/README.md) (OpenAPI 3.1)
 | `/` | GET | Health check (basic) |
 | `/api/health` | GET | Health check (detailed) |
 | `/api/remember` | POST | Store a memory (with AI classification for voice inputs, custom timestamps) |
+| `/api/remember/batch` | POST | Batch store memories (up to 50 at once) |
 | `/api/recall` | POST | Semantic search (quality boost, 65+ temporal patterns, range queries, AI summarization) |
 | `/api/recall/by-tags` | POST | Tag-based search |
 | `/api/context` | POST | Proactive context surfacing |
 | `/api/memories` | GET | List all memories |
-| `/api/memories/:id` | GET | Get specific memory |
-| `/api/memories/:id` | PATCH | Update memory metadata |
-| `/api/forget/:id` | DELETE | Delete memory |
+| `/api/memories/:id` | GET | Get specific memory (supports ID prefix ≥8 chars) |
+| `/api/memories/:id` | PATCH | Update memory metadata (supports ID prefix) |
+| `/api/memories/:id/reinforce` | POST | Reinforce memory (increase quality score) |
+| `/api/forget/:id` | DELETE | Delete memory (supports ID prefix) |
 | `/api/forget/by-tags` | POST | Delete by tags |
 | `/api/tags` | GET | List all tags |
 | `/api/stats` | GET | Memory statistics |
@@ -264,13 +266,15 @@ Once configured, these tools are available in Claude:
 | Tool | Description |
 |------|-------------|
 | `remember` | Store a memory with metadata (supports custom timestamps) |
+| `batch_remember` | Store multiple memories at once (up to 50) |
 | `recall` | Semantic search (quality boost, temporal range queries with 65+ natural language patterns) |
 | `recall_by_tags` | Tag-based search |
 | `proactive_context` | Surface relevant memories |
 | `list_memories` | List all memories |
-| `forget` | Delete by ID |
+| `forget` | Delete by ID (supports ID prefix ≥8 chars) |
 | `forget_by_tags` | Delete by tags |
-| `update_memory` | Update memory metadata |
+| `update_memory` | Update memory metadata (supports ID prefix) |
+| `reinforce_memory` | Reinforce important memory (increase quality score) |
 | `memory_stats` | Get statistics |
 | `context_summary` | Recent learnings/decisions |
 | `consolidate` | Trigger memory consolidation |

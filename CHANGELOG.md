@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Prefix ID Resolution**: All memory ID endpoints now support 8+ character prefixes for easier CLI/MCP usage
+  - Applies to: `GET /api/memories/:id`, `PATCH /api/memories/:id`, `DELETE /api/forget/:id`
+  - Returns 404 if no match, 409 if ambiguous (multiple matches)
+  - Response includes `resolved_from` field when prefix was used
+- **Batch Memory Storage**: New `POST /api/remember/batch` endpoint for efficient bulk imports
+  - Store up to 50 memories in a single request
+  - Supports all memory metadata (type, tags, timestamps, emotions, etc.)
+  - Returns detailed success/error breakdown per memory
+  - AI classification works for batch voice inputs
+  - Use case: Journal imports, conversation log ingestion, weekly summaries
+- **Memory Reinforcement**: New `POST /api/memories/:id/reinforce` endpoint
+  - Manually increase quality score by 0.1 (max 1.0)
+  - Mark important memories for retention priority
+  - Supports ID prefix resolution
+- **New MCP Tools** (2 new):
+  - `batch_remember` - Bulk memory storage via MCP
+  - `reinforce_memory` - Reinforce important memories
+- **Enhanced MCP Tools**: `forget`, `update_memory` tools now support ID prefix resolution
+
+### Changed
+- Worker version bumped to 2.1.0
+- MCP bridge version bumped to 1.2.0
+
 ---
 
 ## [2.0.0] - 2026-02-01
