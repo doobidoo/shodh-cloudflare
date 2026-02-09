@@ -1671,9 +1671,10 @@ app.post('/api/chat', async (c) => {
     const responseStream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder();
+        const decoder = new TextDecoder();
 
         try {
-          // Type the stream correctly
+          // Workers AI returns a ReadableStream of Uint8Array chunks
           const stream = aiStream as ReadableStream;
           const reader = stream.getReader();
 
@@ -1688,9 +1689,16 @@ app.post('/api/chat', async (c) => {
               break;
             }
 
-            // Extract text from the chunk
-            // Workers AI stream format: { response: string }
-            const text = (value as any).response || '';
+            // Decode the Uint8Array chunk to string
+            let text = '';
+            if (value instanceof Uint8Array) {
+              text = decoder.decode(value, { stream: true });
+            } else if (typeof value === 'string') {
+              text = value;
+            } else if (value && typeof value === 'object' && 'response' in value) {
+              // Fallback for non-streaming format
+              text = (value as any).response || '';
+            }
 
             if (text) {
               const chunk = JSON.stringify({ delta: text, done: false });
@@ -1702,7 +1710,7 @@ app.post('/api/chat', async (c) => {
           const errorChunk = JSON.stringify({
             delta: '',
             done: true,
-            error: 'Streaming failed'
+            error: error instanceof Error ? error.message : 'Streaming failed'
           });
           controller.enqueue(encoder.encode(`data: ${errorChunk}\n\n`));
           controller.close();
