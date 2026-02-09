@@ -1671,12 +1671,14 @@ app.post('/api/chat', async (c) => {
     const responseStream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder();
-        const decoder = new TextDecoder();
 
         try {
-          // Workers AI returns a ReadableStream of Uint8Array chunks
+          // Workers AI returns a ReadableStream of JSON chunks
+          // Each chunk is an object: {response: string, tool_calls: [], p: string}
           const stream = aiStream as ReadableStream;
           const reader = stream.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
 
           while (true) {
             const { done, value } = await reader.read();
@@ -1689,20 +1691,31 @@ app.post('/api/chat', async (c) => {
               break;
             }
 
-            // Decode the Uint8Array chunk to string
-            let text = '';
+            // Decode Uint8Array to string and add to buffer
             if (value instanceof Uint8Array) {
-              text = decoder.decode(value, { stream: true });
-            } else if (typeof value === 'string') {
-              text = value;
-            } else if (value && typeof value === 'object' && 'response' in value) {
-              // Fallback for non-streaming format
-              text = (value as any).response || '';
-            }
+              buffer += decoder.decode(value, { stream: true });
 
-            if (text) {
-              const chunk = JSON.stringify({ delta: text, done: false });
-              controller.enqueue(encoder.encode(`data: ${chunk}\n\n`));
+              // Try to parse complete JSON objects from buffer
+              const lines = buffer.split('\n');
+              buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+              for (const line of lines) {
+                if (line.trim().startsWith('data: ')) {
+                  const jsonStr = line.substring(6); // Remove 'data: ' prefix
+                  try {
+                    const aiChunk = JSON.parse(jsonStr);
+                    const text = aiChunk.response || '';
+
+                    if (text) {
+                      const chunk = JSON.stringify({ delta: text, done: false });
+                      controller.enqueue(encoder.encode(`data: ${chunk}\n\n`));
+                    }
+                  } catch (e) {
+                    // Skip malformed JSON
+                    console.error('Failed to parse AI chunk:', e, jsonStr);
+                  }
+                }
+              }
             }
           }
         } catch (error) {
