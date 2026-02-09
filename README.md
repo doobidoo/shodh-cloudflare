@@ -137,6 +137,10 @@ See the [complete installation guide](docs/INSTALLATION.md) for:
 
 This system can be integrated with any AI client that supports the [Model Context Protocol (MCP)](https://github.com/model-context-protocol/spec) or can have its behavior customized with hooks and system prompts.
 
+### Obsidian Integration
+
+**[Obsidian Shodh Sync Plugin](https://github.com/doobidoo/obsidian-shodh-sync)** - Sync your Shodh memories directly into your Obsidian vault with hierarchical folder organization (Year/Month). Available in the Obsidian Community Plugin Store.
+
 ### Claude Desktop
 
 Add the following to your Claude Desktop config file:
